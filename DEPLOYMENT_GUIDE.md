@@ -164,22 +164,6 @@ rm -rf app/build
 
 ### Installation Issues
 
-#### Signature Mismatch (Expo vs Native)
-When switching between Expo and native Android builds:
-
-```bash
-# Error: INSTALL_FAILED_UPDATE_INCOMPATIBLE
-# This happens when Expo version and native version have different signatures
-
-# Solution 1: Build RELEASE APK instead of debug
-./gradlew assembleRelease
-adb install app/build/outputs/apk/release/app-release.apk
-
-# Solution 2: Uninstall existing version first
-adb uninstall com.museframe.app
-adb install app/build/outputs/apk/[debug|release]/app-[debug|release].apk
-```
-
 **Important Notes:**
 - Debug builds use different signatures (Expo debug key vs Android Studio debug key)
 - Release builds use your `muse-tv.jks` keystore - same for both Expo and native
