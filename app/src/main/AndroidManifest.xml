@@ -14,13 +14,12 @@
     <!-- Support Android TV -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-    
+
     <supports-screens
         android:smallScreens="false"
         android:normalScreens="false"
         android:largeScreens="true"
-        android:xlargeScreens="true"
-        android:requiresSmallestWidthDp="600" />
+        android:xlargeScreens="true" />
 
     <!-- Require landscape orientation for better TV/tablet experience -->
     <uses-feature android:name="android.hardware.screen.landscape" android:required="false" />
