@@ -11,7 +11,7 @@ defaultConfig {
     applicationId = "com.museframe.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 30010  // Increment this (e.g., 30011, 30012, etc.)
+    versionCode = 300100  // Increment this (e.g., 300101, 300102, etc.)
     versionName = "3.0.1" // Update semantic version (e.g., "3.0.2", "3.1.0", etc.)
     ...
 }
@@ -19,8 +19,9 @@ defaultConfig {
 
 **Version Code Rules:**
 - Must be incremented for each release
-- Currently using format: Major(3) + Minor(00) + Patch(10) = 30010
-- Example: 3.0.2 → 30020, 3.1.0 → 31000
+- Currently using format: Major(3) + Minor(00) + Patch(100) = 300100
+- Example: 3.0.2 → 300200, 3.1.0 → 301000
+- Must be higher than any previously installed version
 
 ---
 
@@ -157,14 +158,39 @@ rm -rf app/build
 - Ensure keystore hasn't expired
 
 ### Installation Issues
+
+#### Signature Mismatch (Expo vs Native)
+When switching between Expo and native Android builds:
+
+```bash
+# Error: INSTALL_FAILED_UPDATE_INCOMPATIBLE
+# This happens when Expo version and native version have different signatures
+
+# Solution 1: Build RELEASE APK instead of debug
+./gradlew assembleRelease
+adb install app/build/outputs/apk/release/app-release.apk
+
+# Solution 2: Uninstall existing version first
+adb uninstall com.museframe.app
+adb install app/build/outputs/apk/[debug|release]/app-[debug|release].apk
+```
+
+**Important Notes:**
+- Debug builds use different signatures (Expo debug key vs Android Studio debug key)
+- Release builds use your `muse-tv.jks` keystore - same for both Expo and native
+- Always use **release builds** for testing when you have Expo version installed
+- Version code must be higher than existing installation
+
+#### General Installation Issues
 ```bash
 # Check connected devices
 adb devices
 
-# Uninstall existing version first
-adb uninstall com.museframe.app
+# Force reinstall (overwrites existing)
+adb install -r app/build/outputs/apk/release/app-release.apk
 
-# Install fresh
+# If still fails, uninstall first
+adb uninstall com.museframe.app
 adb install app/build/outputs/apk/release/app-release.apk
 ```
 
@@ -172,10 +198,10 @@ adb install app/build/outputs/apk/release/app-release.apk
 
 ## 📊 Version History
 
-| Version | Code  | Date       | Notes                                      |
-|---------|-------|------------|--------------------------------------------|
-| 3.0.1   | 30010 | 2025-09-26 | Push notifications, optimizations         |
-| 3.0.0   | 30000 | -          | Initial native Android version             |
+| Version | Code   | Date       | Notes                                      |
+|---------|--------|------------|--------------------------------------------|
+| 3.0.1   | 300100 | 2025-09-26 | Push notifications, smooth transitions    |
+| 3.0.0   | 300000 | -          | Initial native Android version (Expo)     |
 
 ---
 

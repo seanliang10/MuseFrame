@@ -47,8 +47,14 @@ class WelcomeViewModel @Inject constructor(
                         Pushy.register(context)
                     }
 
-                    // Save Pushy token
+                    // Save Pushy token and update state first
                     deviceRepository.savePushyToken(pushyToken)
+
+                    _uiState.update { state ->
+                        state.copy(
+                            pushyToken = pushyToken
+                        )
+                    }
 
                     // Get or generate device ID
                     var deviceId = deviceRepository.getDeviceId().first()
@@ -65,14 +71,13 @@ class WelcomeViewModel @Inject constructor(
                         }
                     }
 
-                    // Generate QR codes for mobile app download
+                    // Generate QR codes for mobile app download (now with pushy token available)
                     deviceId?.let { generateQRCodes(it) }
 
                     _uiState.update { state ->
                         state.copy(
                             isLoading = false,
-                            deviceId = deviceId,
-                            pushyToken = pushyToken
+                            deviceId = deviceId
                         )
                     }
 
@@ -109,14 +114,14 @@ class WelcomeViewModel @Inject constructor(
                 val androidUrl = "https://play.google.com/store/apps/details?id=com.museframe.mobile" // Replace with actual
                 val androidQR = QRCodeGenerator.generateQRCode(androidUrl, 300, 300)
 
-                // Device pairing QR (contains device ID for pairing)
-                val pairingData = """
-                    {
-                        "deviceId": "$deviceId",
-                        "pairingUrl": "${ApiConstants.BASE_URL}pair/$deviceId"
-                    }
-                """.trimIndent()
-                val pairingQR = QRCodeGenerator.generateQRCode(pairingData, 400, 400)
+                // Device pairing QR (contains only Pushy token)
+                val currentPushyToken = _uiState.value.pushyToken
+                val pairingQR = if (currentPushyToken != null) {
+                    QRCodeGenerator.generateQRCode(currentPushyToken, 400, 400)
+                } else {
+                    // Fallback to device ID if pushy token not available
+                    QRCodeGenerator.generateQRCode(deviceId, 400, 400)
+                }
 
                 _uiState.update { state ->
                     state.copy(

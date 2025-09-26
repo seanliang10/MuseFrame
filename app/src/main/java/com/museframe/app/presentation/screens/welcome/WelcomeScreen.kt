@@ -268,18 +268,26 @@ fun WelcomeScreen(
                                         contentDescription = "Device Pairing QR Code",
                                         modifier = Modifier.fillMaxSize()
                                     )
-                                } ?: Text(
-                                    text = "Pairing QR",
-                                    color = Color.Black
-                                )
+                                } ?: if (uiState.pushyToken == null && !uiState.isLoading) {
+                                    CircularProgressIndicator(
+                                        color = Color.Gray,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                } else {
+                                    Text(
+                                        text = "Loading...",
+                                        color = Color.Black
+                                    )
+                                }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        uiState.deviceId?.let { deviceId ->
+                        // Show Pushy token as ID if available, otherwise show device ID
+                        (uiState.pushyToken ?: uiState.deviceId)?.let { id ->
                             Text(
-                                text = "ID: $deviceId",
+                                text = "ID: $id",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.Gray.copy(alpha = 0.7f)
                             )
