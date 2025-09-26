@@ -12,7 +12,6 @@ local.properties
 
 # Project specific
 CLAUDE.md
-/muse-frame
 /backend
 
 # Security - Never commit keystore files
