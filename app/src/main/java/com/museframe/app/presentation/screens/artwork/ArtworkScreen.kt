@@ -19,9 +19,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -87,14 +90,15 @@ fun ArtworkScreen(
                     viewModel.handlePreviousCommand()
                 }
                 command.startsWith("UPDATE_ARTWORK:") -> {
-                    // Parse artwork update data
-                    val data = command.substringAfter("UPDATE_ARTWORK:")
-                    try {
-                        // Parse JSON data to get playlist_id and artwork_id
-                        // For now, just check if current artwork matches
-                        viewModel.handleArtworkSettingsUpdate(playlistId, artworkId)
-                    } catch (e: Exception) {
-                        timber.log.Timber.e(e, "Error parsing artwork update")
+                    // Parse playlist_id and artwork_id from command
+                    val parts = command.substringAfter("UPDATE_ARTWORK:").split(":")
+                    if (parts.size >= 2) {
+                        val updatePlaylistId = parts[0]
+                        val updateArtworkId = parts[1]
+                        Timber.d("UPDATE_ARTWORK command - Playlist: $updatePlaylistId, Artwork: $updateArtworkId")
+                        viewModel.handleArtworkSettingsUpdate(updatePlaylistId, updateArtworkId)
+                    } else {
+                        Timber.e("Invalid UPDATE_ARTWORK command format: $command")
                     }
                 }
                 command.startsWith("REFRESH_PLAYLIST:") -> {
@@ -145,16 +149,56 @@ fun ArtworkScreen(
     }
 
     // Handle auto-advance for images based on duration
+    // Track remaining time when paused
+    var remainingTime by remember { mutableStateOf<Long?>(null) }
+    var timerStartTime by remember { mutableStateOf(0L) }
+
     LaunchedEffect(uiState.currentPlaylistArtwork, uiState.isPaused) {
         val playlistArtwork = uiState.currentPlaylistArtwork
         Timber.d("LaunchedEffect triggered - artwork: ${playlistArtwork?.artwork?.title}, mediaType: ${playlistArtwork?.artwork?.mediaType}, duration: ${playlistArtwork?.duration}, isPaused: ${uiState.isPaused}")
-        if (playlistArtwork != null &&
-            playlistArtwork.artwork.mediaType == MediaType.IMAGE &&
-            !uiState.isPaused) {
-            Timber.d("Starting delay for ${playlistArtwork.duration} seconds for image: ${playlistArtwork.artwork.title}")
-            delay((playlistArtwork.duration * 1000).toLong())
-            Timber.d("Delay finished, calling nextArtwork for image: ${playlistArtwork.artwork.title}")
-            viewModel.nextArtwork()
+
+        if (playlistArtwork != null && playlistArtwork.artwork.mediaType == MediaType.IMAGE) {
+            if (!uiState.isPaused) {
+                // Calculate delay time - use remaining time if resuming, otherwise full duration
+                val delayTime = if (remainingTime != null && remainingTime!! > 0) {
+                    Timber.d("Resuming timer with ${remainingTime}ms remaining")
+                    val timeToWait = remainingTime!!
+                    remainingTime = null // Clear remaining time after using it
+                    timeToWait
+                } else {
+                    Timber.d("Starting new timer for ${playlistArtwork.duration} seconds")
+                    (playlistArtwork.duration * 1000).toLong()
+                }
+
+                timerStartTime = System.currentTimeMillis()
+                delay(delayTime)
+
+                // Check pause state again after delay before advancing
+                if (!uiState.isPaused) {
+                    Timber.d("Timer finished and not paused, calling nextArtwork")
+                    remainingTime = null
+                    viewModel.nextArtwork()
+                } else {
+                    Timber.d("Timer finished but slideshow is paused, staying on current image")
+                    // Don't advance, and reset remaining time for next resume
+                    remainingTime = 0L
+                }
+            } else {
+                // If paused and timer was running, calculate remaining time
+                if (timerStartTime > 0 && playlistArtwork.artwork.mediaType == MediaType.IMAGE) {
+                    val elapsed = System.currentTimeMillis() - timerStartTime
+                    val totalDuration = (playlistArtwork.duration * 1000).toLong()
+                    val remaining = totalDuration - elapsed
+                    if (remaining > 0) {
+                        remainingTime = remaining
+                        Timber.d("Paused with ${remaining}ms remaining")
+                    }
+                }
+            }
+        } else if (playlistArtwork == null) {
+            // Reset timer tracking when no artwork
+            remainingTime = null
+            timerStartTime = 0L
         }
     }
 
@@ -210,9 +254,14 @@ fun ArtworkScreen(
         uiState.currentPlaylistArtwork?.let { playlistArtwork ->
             ArtworkDisplay(
                 playlistArtwork = playlistArtwork,
+                isPaused = uiState.isPaused,
                 onVideoEnded = {
                     if (!uiState.isPaused) {
+                        Timber.d("Video ended and not paused, advancing to next artwork")
                         viewModel.nextArtwork()
+                    } else {
+                        Timber.d("Video ended but paused, will loop current video")
+                        // Video will loop automatically when isPaused is true
                     }
                 }
             )
@@ -283,6 +332,7 @@ fun ArtworkScreen(
 @Composable
 fun ArtworkDisplay(
     playlistArtwork: PlaylistArtwork,
+    isPaused: Boolean = false,
     onVideoEnded: () -> Unit
 ) {
     val backgroundColor = try {
@@ -291,6 +341,9 @@ fun ArtworkDisplay(
         Color.Black
     }
 
+    // Apply 5x multiplier to border width for better visibility
+    val effectiveBorderWidth = playlistArtwork.borderWidth * 5f
+
     if (playlistArtwork.showInfo) {
         // Layout with dedicated info section
         Column(
@@ -298,45 +351,47 @@ fun ArtworkDisplay(
                 .fillMaxSize()
                 .background(backgroundColor)
         ) {
-            // Artwork section
+            // Artwork section with border as frame
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(
-                        start = playlistArtwork.borderWidth.dp,
-                        top = playlistArtwork.borderWidth.dp,
-                        end = playlistArtwork.borderWidth.dp,
+                        start = effectiveBorderWidth.dp,
+                        top = effectiveBorderWidth.dp,
+                        end = effectiveBorderWidth.dp,
                         bottom = 0.dp
                     )
-                    .background(Color.Black),
+                    .background(Color.Black)
+                    .clipToBounds(), // Ensure artwork stays within the frame
                 contentAlignment = Alignment.Center
             ) {
                 when (playlistArtwork.artwork.mediaType) {
-                    MediaType.IMAGE, MediaType.GIF -> {
-                        AsyncImage(
-                            model = playlistArtwork.artwork.displayUrl,
-                            contentDescription = playlistArtwork.artwork.title,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    scaleX = playlistArtwork.zoom
-                                    scaleY = playlistArtwork.zoom
-                                    translationX = playlistArtwork.adjustment.x * density
-                                    translationY = playlistArtwork.adjustment.y * density
-                                },
-                            contentScale = ContentScale.Fit
-                        )
-                    }
-                    MediaType.VIDEO -> {
-                        VideoPlayer(
-                            videoUrl = playlistArtwork.artwork.displayUrl,
-                            volume = playlistArtwork.artwork.volume,
-                            zoom = playlistArtwork.zoom,
-                            offsetX = playlistArtwork.adjustment.x,
-                            offsetY = playlistArtwork.adjustment.y,
-                            onEnded = onVideoEnded
-                        )
+                        MediaType.IMAGE, MediaType.GIF -> {
+                            AsyncImage(
+                                model = playlistArtwork.artwork.displayUrl,
+                                contentDescription = playlistArtwork.artwork.title,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        scaleX = playlistArtwork.zoom
+                                        scaleY = playlistArtwork.zoom
+                                        translationX = playlistArtwork.adjustment.x * density
+                                        translationY = playlistArtwork.adjustment.y * density
+                                    },
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                        MediaType.VIDEO -> {
+                            VideoPlayer(
+                                videoUrl = playlistArtwork.artwork.displayUrl,
+                                volume = playlistArtwork.artwork.volume,
+                                zoom = playlistArtwork.zoom,
+                                offsetX = playlistArtwork.adjustment.x,
+                                offsetY = playlistArtwork.adjustment.y,
+                                isPaused = isPaused,
+                                onEnded = onVideoEnded
+                            )
                     }
                 }
             }
@@ -347,7 +402,7 @@ fun ArtworkDisplay(
                 creator = playlistArtwork.artwork.creator,
                 marketplaceUrl = playlistArtwork.artwork.marketplaceUrl,
                 backgroundColor = backgroundColor,
-                borderWidth = playlistArtwork.borderWidth
+                borderWidth = effectiveBorderWidth
             )
         }
     } else {
@@ -360,35 +415,37 @@ fun ArtworkDisplay(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(playlistArtwork.borderWidth.dp)
-                    .background(Color.Black),
+                    .padding(effectiveBorderWidth.dp)
+                    .background(Color.Black)
+                    .clipToBounds(), // Ensure artwork stays within the frame
                 contentAlignment = Alignment.Center
             ) {
                 when (playlistArtwork.artwork.mediaType) {
-                    MediaType.IMAGE, MediaType.GIF -> {
-                        AsyncImage(
-                            model = playlistArtwork.artwork.displayUrl,
-                            contentDescription = playlistArtwork.artwork.title,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    scaleX = playlistArtwork.zoom
-                                    scaleY = playlistArtwork.zoom
-                                    translationX = playlistArtwork.adjustment.x * density
-                                    translationY = playlistArtwork.adjustment.y * density
-                                },
-                            contentScale = ContentScale.Fit
-                        )
-                    }
-                    MediaType.VIDEO -> {
-                        VideoPlayer(
-                            videoUrl = playlistArtwork.artwork.displayUrl,
-                            volume = playlistArtwork.artwork.volume,
-                            zoom = playlistArtwork.zoom,
-                            offsetX = playlistArtwork.adjustment.x,
-                            offsetY = playlistArtwork.adjustment.y,
-                            onEnded = onVideoEnded
-                        )
+                        MediaType.IMAGE, MediaType.GIF -> {
+                            AsyncImage(
+                                model = playlistArtwork.artwork.displayUrl,
+                                contentDescription = playlistArtwork.artwork.title,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        scaleX = playlistArtwork.zoom
+                                        scaleY = playlistArtwork.zoom
+                                        translationX = playlistArtwork.adjustment.x * density
+                                        translationY = playlistArtwork.adjustment.y * density
+                                    },
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                        MediaType.VIDEO -> {
+                            VideoPlayer(
+                                videoUrl = playlistArtwork.artwork.displayUrl,
+                                volume = playlistArtwork.artwork.volume,
+                                zoom = playlistArtwork.zoom,
+                                offsetX = playlistArtwork.adjustment.x,
+                                offsetY = playlistArtwork.adjustment.y,
+                                isPaused = isPaused,
+                                onEnded = onVideoEnded
+                            )
                     }
                 }
             }
@@ -543,6 +600,7 @@ fun VideoPlayer(
     zoom: Float,
     offsetX: Float,
     offsetY: Float,
+    isPaused: Boolean = false,
     onEnded: () -> Unit
 ) {
     val context = LocalContext.current
@@ -555,7 +613,8 @@ fun VideoPlayer(
                 // Optimize for low-end devices
                 setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
                 playWhenReady = true
-                repeatMode = Player.REPEAT_MODE_OFF
+                // Loop video when paused, otherwise play once
+                repeatMode = if (isPaused) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
                 setVolume(volume)
 
                 addListener(object : Player.Listener {
@@ -574,6 +633,12 @@ fun VideoPlayer(
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
         exoPlayer.play()
+    }
+
+    // Update repeat mode when pause state changes (without reloading video)
+    LaunchedEffect(isPaused) {
+        exoPlayer.repeatMode = if (isPaused) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+        Timber.d("Video repeat mode updated - looping: $isPaused")
     }
 
     // Lifecycle management

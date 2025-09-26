@@ -204,7 +204,6 @@ fun PlaylistDetailScreen(
                                     onArtworkClick(artwork.id)
                                 },
                                 title = artwork.title,
-                                subtitle = artwork.creator,
                                 imageUrl = artwork.thumbnailUrl ?: artwork.displayUrl,
                                 badge = when (artwork.mediaType) {
                                     MediaType.VIDEO -> "VIDEO"

@@ -44,10 +44,20 @@ class ArtworkViewModel @Inject constructor(
         loadPlaylistArtworks()
         observeSettings()
         loadAllPlaylists()
-        // Start slideshow by default when entering artwork view
+        // Load the current pause state from preferences (don't force it to false)
         viewModelScope.launch {
-            preferencesManager.updateDisplaySettings(isPaused = false)
             deviceId = preferencesManager.deviceId.first()
+            // Read current display settings to get the stored pause state
+            val currentSettings = preferencesManager.displaySettings.first()
+            _uiState.update {
+                it.copy(
+                    isPaused = currentSettings.isPaused,
+                    slideshowDuration = currentSettings.slideshowDuration,
+                    volume = currentSettings.volume,
+                    brightness = currentSettings.brightness
+                )
+            }
+            Timber.d("ArtworkViewModel initialized with isPaused: ${currentSettings.isPaused}")
         }
     }
 
@@ -80,6 +90,8 @@ class ArtworkViewModel @Inject constructor(
     private fun observeSettings() {
         viewModelScope.launch {
             preferencesManager.displaySettings.collect { settings ->
+                // Simply update all settings without reloading
+                // The pause state will be checked when video/image timer ends
                 _uiState.update { state ->
                     state.copy(
                         slideshowDuration = settings.slideshowDuration,
@@ -88,6 +100,8 @@ class ArtworkViewModel @Inject constructor(
                         brightness = settings.brightness
                     )
                 }
+
+                Timber.d("Settings updated - isPaused: ${settings.isPaused}, volume: ${settings.volume}, brightness: ${settings.brightness}")
             }
         }
     }
@@ -185,17 +199,33 @@ class ArtworkViewModel @Inject constructor(
 
     fun handlePauseCommand() {
         // Handle pause command from push notification
+        Timber.d("handlePauseCommand called")
         viewModelScope.launch {
+            // Update global pause state in preferences
             preferencesManager.updateDisplaySettings(isPaused = true)
-            _uiState.update { it.copy(isPaused = true) }
+
+            // Just update the state without reloading
+            _uiState.update { state ->
+                state.copy(isPaused = true)
+            }
+
+            Timber.d("Pause state updated - will be checked when video/image timer ends")
         }
     }
 
     fun handleResumeCommand() {
         // Handle resume command from push notification
+        Timber.d("handleResumeCommand called")
         viewModelScope.launch {
+            // Update global pause state in preferences
             preferencesManager.updateDisplaySettings(isPaused = false)
-            _uiState.update { it.copy(isPaused = false) }
+
+            // Just update the state without reloading
+            _uiState.update { state ->
+                state.copy(isPaused = false)
+            }
+
+            Timber.d("Resume state updated - will be checked when video/image timer ends")
         }
     }
 
@@ -315,49 +345,74 @@ class ArtworkViewModel @Inject constructor(
 
     fun handleNextCommand() {
         // Handle next command from push notification
+        // Allow manual navigation even when paused
         Timber.d("handleNextCommand called, isPaused: ${_uiState.value.isPaused}")
-        if (!_uiState.value.isPaused) {
-            nextArtwork()
-        } else {
-            Timber.d("Ignoring NEXT command because slideshow is paused")
-        }
+        nextArtwork()
     }
 
     fun handlePreviousCommand() {
         // Handle previous command from push notification
+        // Allow manual navigation even when paused
         Timber.d("handlePreviousCommand called, isPaused: ${_uiState.value.isPaused}")
-        if (!_uiState.value.isPaused) {
-            previousArtwork()
-        } else {
-            Timber.d("Ignoring PREVIOUS command because slideshow is paused")
-        }
+        previousArtwork()
     }
 
-    fun handleArtworkSettingsUpdate(playlistId: String, artworkId: String) {
+    fun handleArtworkSettingsUpdate(updatePlaylistId: String, updateArtworkId: String) {
         // Check if this update is for the current artwork
         val currentArtwork = _uiState.value.currentArtwork
-        if (currentArtwork?.id == artworkId && currentPlaylistId == playlistId) {
+        Timber.d("handleArtworkSettingsUpdate - Current: $currentPlaylistId/$currentArtwork?.id, Update: $updatePlaylistId/$updateArtworkId")
+
+        if (currentArtwork?.id == updateArtworkId && currentPlaylistId == updatePlaylistId) {
+            Timber.d("Update matches current artwork, reloading settings...")
             // Reload current artwork settings
             viewModelScope.launch {
                 try {
-                    val result = playlistRepository.getPlaylistArtworkDetail(playlistId, artworkId)
+                    // Show loading state briefly
+                    _uiState.update { it.copy(isLoading = true) }
+
+                    val result = playlistRepository.getPlaylistArtworkDetail(updatePlaylistId, updateArtworkId)
                     if (result.isSuccess) {
                         result.getOrNull()?.let { updatedArtwork ->
-                            // Update current artwork and restart duration
-                            val index = playlistArtworksList.indexOfFirst { it.artwork.id == artworkId }
+                            Timber.d("Successfully fetched updated artwork settings")
+                            // Update current artwork in the list
+                            val index = playlistArtworksList.indexOfFirst { it.artwork.id == updateArtworkId }
                             if (index >= 0) {
                                 playlistArtworksList = playlistArtworksList.toMutableList().apply {
                                     this[index] = updatedArtwork
                                 }
                                 currentIndex = index
+
+                                // Force UI update by clearing then setting the artwork
+                                // This will restart video or reset image timer
+                                _uiState.update { state ->
+                                    state.copy(
+                                        currentPlaylistArtwork = null,
+                                        currentArtwork = null
+                                    )
+                                }
+
+                                // Small delay to ensure UI updates
+                                delay(100)
+
+                                // Load the updated artwork
                                 loadCurrentArtwork()
+                                Timber.d("Artwork settings updated and reloaded")
+                            } else {
+                                Timber.w("Artwork not found in current playlist")
+                                _uiState.update { it.copy(isLoading = false) }
                             }
                         }
+                    } else {
+                        Timber.e("Failed to fetch updated artwork settings")
+                        _uiState.update { it.copy(isLoading = false) }
                     }
                 } catch (e: Exception) {
                     Timber.e(e, "Error updating artwork settings")
+                    _uiState.update { it.copy(isLoading = false) }
                 }
             }
+        } else {
+            Timber.d("Update doesn't match current artwork, ignoring")
         }
     }
 

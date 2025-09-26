@@ -72,9 +72,10 @@ class MainActivity : ComponentActivity(), NavigationHandler {
     }
 
     override fun navigateToWelcome() {
+        Timber.d("navigateToWelcome called - navigating to welcome screen")
         navController?.navigate(Screen.Welcome.route) {
             popUpTo(0) { inclusive = true }
-        }
+        } ?: Timber.e("navController is null, cannot navigate to welcome")
     }
 
     override fun navigateToPlaylist(playlistId: String) {

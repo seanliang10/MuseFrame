@@ -64,14 +64,6 @@ fun SplashScreen(
                 fontWeight = FontWeight.Light
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Digital Art Display",
-                style = MaterialTheme.typography.bodyLarge,
-                color = Color.Gray
-            )
-
             Spacer(modifier = Modifier.height(48.dp))
 
             if (uiState.isLoading) {

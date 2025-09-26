@@ -42,7 +42,7 @@ class PushReceiver : BroadcastReceiver() {
                 PushCommand.UPDATE_DISPLAY_SETTING.value -> handleUpdateDisplaySetting(context, intent)
                 PushCommand.REFRESH_PLAYLISTS.value -> handleRefreshPlaylists(context)
                 PushCommand.REFRESH_PLAYLIST.value -> handleRefreshPlaylist(context, data)
-                PushCommand.UPDATE_PLAYLIST_ARTWORK_SETTING.value -> handleUpdateArtworkSetting(context, data)
+                PushCommand.UPDATE_PLAYLIST_ARTWORK_SETTING.value -> handleUpdateArtworkSetting(context, intent)
                 PushCommand.CAST.value -> handleCast(context, intent)
                 PushCommand.CAST_EXHIBITION.value -> handleCastExhibition(context, intent)
                 PushCommand.NEXT.value -> handleNext(context)
@@ -113,13 +113,19 @@ class PushReceiver : BroadcastReceiver() {
     }
 
     private fun handleDisconnected(context: Context) {
+        Log.d(TAG, "handleDisconnected called")
+
         // Clear auth token
         val sharedPrefs = context.getSharedPreferences("museframe_prefs", Context.MODE_PRIVATE)
         sharedPrefs.edit().remove("auth_token").apply()
+        Log.d(TAG, "Auth token cleared")
 
         // Send broadcast to navigate to welcome screen
         val intent = Intent("com.museframe.DEVICE_DISCONNECTED")
+        intent.setPackage(context.packageName) // Add package name to ensure delivery
+        intent.putExtra("timestamp", System.currentTimeMillis())
         context.sendBroadcast(intent)
+        Log.d(TAG, "Broadcasting DEVICE_DISCONNECTED intent")
     }
 
     private fun handlePause(context: Context) {
@@ -194,12 +200,51 @@ class PushReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun handleUpdateArtworkSetting(context: Context, data: String?) {
-        data?.let {
-            val intent = Intent("com.museframe.UPDATE_ARTWORK_SETTING")
-            intent.putExtra("data", it)
-            intent.setPackage(context.packageName)
-            context.sendBroadcast(intent)
+    private fun handleUpdateArtworkSetting(context: Context, pushIntent: Intent) {
+        Log.d(TAG, "handleUpdateArtworkSetting called")
+
+        val broadcastIntent = Intent("com.museframe.UPDATE_ARTWORK_SETTING")
+
+        // Try to get playlist_id and artwork_id from intent extras
+        var playlistId: String? = pushIntent.getStringExtra("playlist_id")
+        var artworkId: String? = pushIntent.getStringExtra("artwork_id")
+
+        // Also check for integer values
+        if (playlistId == null) {
+            val intId = pushIntent.getIntExtra("playlist_id", 0)
+            if (intId != 0) playlistId = intId.toString()
+        }
+        if (artworkId == null) {
+            val intId = pushIntent.getIntExtra("artwork_id", 0)
+            if (intId != 0) artworkId = intId.toString()
+        }
+
+        // Also try to get from data field if not in extras
+        val data = pushIntent.getStringExtra("data")
+        if ((playlistId == null || artworkId == null) && data != null) {
+            try {
+                val json = Json.parseToJsonElement(data).jsonObject
+                if (playlistId == null) {
+                    playlistId = json["playlist_id"]?.jsonPrimitive?.content
+                }
+                if (artworkId == null) {
+                    artworkId = json["artwork_id"]?.jsonPrimitive?.content
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error parsing artwork settings data", e)
+            }
+        }
+
+        if (playlistId != null && artworkId != null) {
+            Log.d(TAG, "UpdateArtworkSetting - Playlist: $playlistId, Artwork: $artworkId")
+            broadcastIntent.putExtra("playlist_id", playlistId)
+            broadcastIntent.putExtra("artwork_id", artworkId)
+            broadcastIntent.putExtra("timestamp", System.currentTimeMillis())
+            broadcastIntent.setPackage(context.packageName)
+            context.sendBroadcast(broadcastIntent)
+            Log.d(TAG, "Broadcasting UPDATE_ARTWORK_SETTING intent")
+        } else {
+            Log.w(TAG, "Missing playlist_id or artwork_id in UpdateArtworkSetting command")
         }
     }
 

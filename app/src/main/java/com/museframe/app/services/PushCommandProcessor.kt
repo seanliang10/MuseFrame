@@ -63,8 +63,8 @@ class PushCommandProcessor @Inject constructor(
             when (intent.action) {
                 "com.museframe.DEVICE_CONNECTED" -> handleDeviceConnected(intent, navigationHandler)
                 "com.museframe.DEVICE_DISCONNECTED" -> handleDeviceDisconnected(navigationHandler)
-                "com.museframe.PAUSE_SLIDESHOW" -> navigationHandler.sendCommandToScreen("PAUSE")
-                "com.museframe.RESUME_SLIDESHOW" -> navigationHandler.sendCommandToScreen("RESUME")
+                "com.museframe.PAUSE_SLIDESHOW" -> handlePause(navigationHandler)
+                "com.museframe.RESUME_SLIDESHOW" -> handleResume(navigationHandler)
                 "com.museframe.NEXT_ARTWORK" -> navigationHandler.sendCommandToScreen("NEXT")
                 "com.museframe.PREVIOUS_ARTWORK" -> navigationHandler.sendCommandToScreen("PREVIOUS")
                 "com.museframe.CAST_PLAYLIST" -> handleCastPlaylist(intent, navigationHandler)
@@ -99,7 +99,8 @@ class PushCommandProcessor @Inject constructor(
     }
     
     private fun handleDeviceDisconnected(navigationHandler: NavigationHandler) {
-        // Note: Auth clearing should be done separately
+        Timber.d("handleDeviceDisconnected called - navigating to welcome screen")
+        // Note: Auth clearing should be done separately in MainActivity
         navigationHandler.navigateToWelcome()
     }
     
@@ -220,8 +221,38 @@ class PushCommandProcessor @Inject constructor(
     }
     
     private fun handleUpdateArtworkSettings(intent: Intent, navigationHandler: NavigationHandler) {
-        intent.getStringExtra("data")?.let { data ->
-            navigationHandler.sendCommandToScreen("UPDATE_ARTWORK:$data")
+        Timber.d("handleUpdateArtworkSettings called")
+        val playlistId = intent.getStringExtra("playlist_id")
+        val artworkId = intent.getStringExtra("artwork_id")
+
+        if (playlistId != null && artworkId != null) {
+            Timber.d("UpdateArtworkSettings - Playlist: $playlistId, Artwork: $artworkId")
+            // Send command with both IDs to the screen
+            navigationHandler.sendCommandToScreen("UPDATE_ARTWORK:$playlistId:$artworkId")
+        } else {
+            Timber.w("Missing playlist_id or artwork_id in UPDATE_ARTWORK_SETTING intent")
         }
+    }
+
+    private fun handlePause(navigationHandler: NavigationHandler) {
+        Timber.d("handlePause called - updating global pause state")
+        // Update global pause state immediately
+        coroutineScope.launch {
+            preferencesManager.updateDisplaySettings(isPaused = true)
+            Timber.d("Global pause state updated to true")
+        }
+        // Also send to screen if it's listening
+        navigationHandler.sendCommandToScreen("PAUSE")
+    }
+
+    private fun handleResume(navigationHandler: NavigationHandler) {
+        Timber.d("handleResume called - updating global pause state")
+        // Update global pause state immediately
+        coroutineScope.launch {
+            preferencesManager.updateDisplaySettings(isPaused = false)
+            Timber.d("Global pause state updated to false")
+        }
+        // Also send to screen if it's listening
+        navigationHandler.sendCommandToScreen("RESUME")
     }
 }
