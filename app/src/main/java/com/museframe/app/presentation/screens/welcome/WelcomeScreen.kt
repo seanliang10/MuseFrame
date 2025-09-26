@@ -4,6 +4,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -21,13 +25,17 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.museframe.app.R
 import android.content.res.Configuration
+import timber.log.Timber
 
 @Composable
 fun WelcomeScreen(
     onDevicePaired: () -> Unit,
+    onNavigateToNoNetwork: () -> Unit = {},
     viewModel: WelcomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val shouldNavigateToNoNetwork by viewModel.shouldNavigateToNoNetwork.collectAsState()
+    val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
@@ -35,6 +43,25 @@ fun WelcomeScreen(
     LaunchedEffect(uiState.isPaired) {
         if (uiState.isPaired) {
             onDevicePaired()
+        }
+    }
+
+    // Navigate to no network screen when needed
+    LaunchedEffect(shouldNavigateToNoNetwork) {
+        Timber.d("WelcomeScreen: shouldNavigateToNoNetwork = $shouldNavigateToNoNetwork")
+        if (shouldNavigateToNoNetwork) {
+            Timber.d("WelcomeScreen: Navigating to NoNetworkScreen")
+            onNavigateToNoNetwork()
+            viewModel.clearNoNetworkNavigation()
+        }
+    }
+
+    // Re-initialize when returning from NoNetworkScreen
+    LaunchedEffect(shouldNavigateToNoNetwork) {
+        // When shouldNavigateToNoNetwork changes from true to false,
+        // it means we're returning from NoNetworkScreen
+        if (!shouldNavigateToNoNetwork && uiState.pairingQRCode == null && !uiState.isLoading) {
+            viewModel.onReturnFromNoNetwork()
         }
     }
 
@@ -263,15 +290,38 @@ fun WelcomeScreen(
                 // Error handling at the bottom
                 uiState.error?.let { error ->
                     Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
                             text = error,
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.Red,
-                            modifier = Modifier.weight(1f)
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
+
+                        // Show network settings button if needed
+                        if (uiState.showNetworkSettings) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = {
+                                    // Open WiFi settings
+                                    val intent = android.content.Intent(android.provider.Settings.ACTION_WIFI_SETTINGS)
+                                    context.startActivity(intent)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Open Network Settings")
+                            }
+                        }
                         Spacer(modifier = Modifier.width(8.dp))
                         TextButton(
                             onClick = { viewModel.retryInitialization() },

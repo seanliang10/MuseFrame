@@ -10,4 +10,5 @@ interface DeviceRepository {
     suspend fun generateDeviceId(): String
     suspend fun savePushyToken(token: String)
     suspend fun unpairDevice(callApi: Boolean = true): Result<Unit>
+    suspend fun fetchAndUpdateDisplayDetails(): Result<Unit>
 }

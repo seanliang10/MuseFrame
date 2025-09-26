@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import timber.log.Timber
 import java.io.IOException
@@ -74,8 +75,10 @@ class PreferencesManager @Inject constructor(
             }
         }
         .map { preferences ->
+            val name = preferences[DISPLAY_NAME_KEY] ?: "Muse Frame"
+            Timber.d("PreferencesManager: Reading frame name from storage: $name")
             DisplaySettingsData(
-                name = preferences[DISPLAY_NAME_KEY] ?: "Muse Frame",
+                name = name,
                 volume = preferences[VOLUME_KEY] ?: 1.0f,
                 brightness = preferences[BRIGHTNESS_KEY] ?: 1.0f,
                 slideshowDuration = preferences[SLIDESHOW_DURATION_KEY] ?: 30,
@@ -123,9 +126,30 @@ class PreferencesManager @Inject constructor(
         }
     }
 
+    suspend fun updateFrameName(name: String) {
+        Timber.d("PreferencesManager: Saving frame name: $name")
+        updateDisplaySettings(name = name)
+    }
+
     suspend fun clearAll() {
+        // Save the display name before clearing
+        val currentName = displaySettings.first().name
+
         dataStore.edit { preferences ->
             preferences.clear()
+            // Restore the display name if it wasn't the default
+            if (currentName != "Muse Frame") {
+                preferences[DISPLAY_NAME_KEY] = currentName
+            }
+        }
+    }
+
+    suspend fun clearAuthData() {
+        // Only clear auth-related data, preserve display settings
+        dataStore.edit { preferences ->
+            preferences.remove(AUTH_TOKEN_KEY)
+            preferences.remove(DEVICE_ID_KEY)
+            // Keep DISPLAY_NAME_KEY, VOLUME_KEY, BRIGHTNESS_KEY, etc.
         }
     }
 

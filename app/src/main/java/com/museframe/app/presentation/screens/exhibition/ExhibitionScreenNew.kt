@@ -42,11 +42,21 @@ import timber.log.Timber
 fun ExhibitionScreenNew(
     exhibitionId: String,
     onBackClick: () -> Unit,
+    onNavigateToNoNetwork: () -> Unit = {},
     viewModel: ExhibitionViewModelNew = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val shouldNavigateToNoNetwork by viewModel.shouldNavigateToNoNetwork.collectAsState()
     val context = LocalContext.current
     val activity = context as? Activity
+
+    // Navigate to no network screen when needed
+    LaunchedEffect(shouldNavigateToNoNetwork) {
+        if (shouldNavigateToNoNetwork) {
+            onNavigateToNoNetwork()
+            viewModel.clearNoNetworkNavigation()
+        }
+    }
 
     // Set full screen mode
     DisposableEffect(Unit) {

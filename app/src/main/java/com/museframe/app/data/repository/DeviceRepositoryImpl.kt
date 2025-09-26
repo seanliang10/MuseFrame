@@ -6,8 +6,10 @@ import com.museframe.app.data.api.dto.DeviceRegisterRequest
 import com.museframe.app.data.local.PreferencesManager
 import com.museframe.app.domain.model.Device
 import com.museframe.app.domain.repository.DeviceRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.util.UUID
 import javax.inject.Inject
@@ -104,19 +106,52 @@ class DeviceRepositoryImpl @Inject constructor(
                 }
             }
 
-            // Always clear all stored data
-            preferencesManager.clearAuthToken()
-            preferencesManager.clearAll()
+            // Clear auth data but preserve display settings
+            preferencesManager.clearAuthData()
             Result.success(Unit)
         } catch (e: Exception) {
             Timber.e(e, "Error during unpair process")
-            // Even if there's an error, try to clear local data
+            // Even if there's an error, try to clear auth data
             try {
-                preferencesManager.clearAuthToken()
-                preferencesManager.clearAll()
+                preferencesManager.clearAuthData()
             } catch (clearError: Exception) {
-                Timber.e(clearError, "Error clearing local data")
+                Timber.e(clearError, "Error clearing auth data")
             }
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun fetchAndUpdateDisplayDetails(): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val authToken = preferencesManager.authToken.first()
+            val deviceId = preferencesManager.deviceId.first()
+
+            if (authToken.isNullOrEmpty() || deviceId.isNullOrEmpty()) {
+                return@withContext Result.failure(Exception("Missing auth token or device ID"))
+            }
+
+            val response = apiService.getDisplayDetails(
+                token = "Bearer $authToken",
+                displayId = deviceId
+            )
+
+            if (response.isSuccessful && response.body()?.success == true) {
+                response.body()?.display?.let { display ->
+                    // Update display settings with values from API
+                    preferencesManager.updateDisplaySettings(
+                        name = display.name,
+                        volume = display.volume?.toFloat()?.div(100f),
+                        brightness = display.brightness?.toFloat()?.div(100f),
+                        isPaused = display.isPaused
+                    )
+                    Timber.d("Updated display details from API: name=${display.name}")
+                }
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Failed to fetch display details"))
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Error fetching display details")
             Result.failure(e)
         }
     }

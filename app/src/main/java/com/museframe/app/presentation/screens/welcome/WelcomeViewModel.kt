@@ -1,16 +1,18 @@
 package com.museframe.app.presentation.screens.welcome
 
+import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.museframe.app.data.api.ApiConstants
 import com.museframe.app.domain.repository.AuthRepository
 import com.museframe.app.domain.repository.DeviceRepository
+import com.museframe.app.presentation.base.NetworkAwareViewModel
 import com.museframe.app.presentation.utils.QRCodeGenerator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -20,10 +22,11 @@ import javax.inject.Inject
 
 @HiltViewModel
 class WelcomeViewModel @Inject constructor(
+    application: Application,
     private val deviceRepository: DeviceRepository,
     private val authRepository: AuthRepository,
     @ApplicationContext private val context: Context
-) : ViewModel() {
+) : NetworkAwareViewModel(application) {
 
     private val _uiState = MutableStateFlow(WelcomeUiState())
     val uiState: StateFlow<WelcomeUiState> = _uiState.asStateFlow()
@@ -34,54 +37,65 @@ class WelcomeViewModel @Inject constructor(
     }
 
     private fun initializeDevice() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+        checkNetworkAndExecute(
+            onNetworkAvailable = {
+                _uiState.update { it.copy(isLoading = true) }
 
-            try {
-                // Register with Pushy in background thread
-                val pushyToken = withContext(Dispatchers.IO) {
-                    Pushy.register(context)
-                }
+                try {
+                    // Register with Pushy in background thread
+                    val pushyToken = withContext(Dispatchers.IO) {
+                        Pushy.register(context)
+                    }
 
-                // Save Pushy token
-                deviceRepository.savePushyToken(pushyToken)
+                    // Save Pushy token
+                    deviceRepository.savePushyToken(pushyToken)
 
-                // Get or generate device ID
-                var deviceId = deviceRepository.getDeviceId().first()
-                if (deviceId == null) {
-                    deviceId = deviceRepository.generateDeviceId()
-                }
+                    // Get or generate device ID
+                    var deviceId = deviceRepository.getDeviceId().first()
+                    if (deviceId == null) {
+                        deviceId = deviceRepository.generateDeviceId()
+                    }
 
-                // Register device with backend
-                val result = deviceRepository.registerDevice(pushyToken)
-                if (result.isSuccess) {
-                    val device = result.getOrNull()
-                    device?.let {
-                        deviceId = it.id
+                    // Register device with backend
+                    val result = deviceRepository.registerDevice(pushyToken)
+                    if (result.isSuccess) {
+                        val device = result.getOrNull()
+                        device?.let {
+                            deviceId = it.id
+                        }
+                    }
+
+                    // Generate QR codes for mobile app download
+                    deviceId?.let { generateQRCodes(it) }
+
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoading = false,
+                            deviceId = deviceId,
+                            pushyToken = pushyToken
+                        )
+                    }
+
+                } catch (e: Exception) {
+                    Timber.e(e, "Error initializing device")
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoading = false,
+                            error = "Failed to initialize device: ${e.message}"
+                        )
                     }
                 }
-
-                // Generate QR codes for mobile app download
-                deviceId?.let { generateQRCodes(it) }
-
-                _uiState.update { state ->
-                    state.copy(
+            },
+            onNetworkUnavailable = {
+                _uiState.update {
+                    it.copy(
                         isLoading = false,
-                        deviceId = deviceId,
-                        pushyToken = pushyToken
+                        showNetworkSettings = true
                     )
                 }
-
-            } catch (e: Exception) {
-                Timber.e(e, "Error initializing device")
-                _uiState.update { state ->
-                    state.copy(
-                        isLoading = false,
-                        error = "Failed to initialize device: ${e.message}"
-                    )
-                }
+                navigateToNoNetwork()
             }
-        }
+        )
     }
 
     private suspend fun generateQRCodes(deviceId: String) {
@@ -131,6 +145,14 @@ class WelcomeViewModel @Inject constructor(
     fun retryInitialization() {
         initializeDevice()
     }
+
+    fun onReturnFromNoNetwork() {
+        // Re-initialize when returning from no network screen
+        Timber.d("Returning from NoNetworkScreen, re-initializing...")
+        clearNoNetworkNavigation()
+        // Always do full initialization when returning
+        initializeDevice()
+    }
 }
 
 data class WelcomeUiState(
@@ -141,5 +163,6 @@ data class WelcomeUiState(
     val androidQRCode: Bitmap? = null,
     val pairingQRCode: Bitmap? = null,
     val isPaired: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val showNetworkSettings: Boolean = false
 )

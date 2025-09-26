@@ -26,6 +26,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
+import kotlinx.coroutines.delay
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,12 +46,23 @@ fun PlaylistsScreen(
     onExhibitionClick: () -> Unit,
     onVersionsClick: () -> Unit = {},
     onLogoutClick: () -> Unit = {},
+    onNavigateToNoNetwork: () -> Unit = {},
     viewModel: PlaylistsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val shouldNavigateToNoNetwork by viewModel.shouldNavigateToNoNetwork.collectAsState()
     val focusManager = LocalFocusManager.current
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+    val refreshButtonFocusRequester = remember { FocusRequester() }
+
+    // Navigate to no network screen when needed
+    LaunchedEffect(shouldNavigateToNoNetwork) {
+        if (shouldNavigateToNoNetwork) {
+            onNavigateToNoNetwork()
+            viewModel.clearNoNetworkNavigation()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -100,11 +112,16 @@ fun PlaylistsScreen(
                 ) {
                     TvButton(
                         modifier = Modifier.weight(1f),
-                        onClick = { viewModel.refresh() },
-                        text = "Refresh",
-                        icon = Icons.Default.Refresh,
-                        enabled = !uiState.isLoading,
-                        requestInitialFocus = true
+                        onClick = {
+                            if (!uiState.isLoading) {
+                                viewModel.refresh()
+                            }
+                        },
+                        text = if (uiState.isLoading) "Loading..." else "Refresh",
+                        icon = if (!uiState.isLoading) Icons.Default.Refresh else null,
+                        enabled = true, // Keep enabled to maintain focus
+                        requestInitialFocus = true,
+                        focusRequester = refreshButtonFocusRequester
                     )
                     TvButton(
                         modifier = Modifier.weight(1f),
@@ -174,11 +191,16 @@ fun PlaylistsScreen(
                     ) {
                         // Refresh button
                         TvButton(
-                            onClick = { viewModel.refresh() },
-                            text = "Refresh",
-                            icon = Icons.Default.Refresh,
-                            enabled = !uiState.isLoading,
-                            requestInitialFocus = true
+                            onClick = {
+                                if (!uiState.isLoading) {
+                                    viewModel.refresh()
+                                }
+                            },
+                            text = if (uiState.isLoading) "Loading..." else "Refresh",
+                            icon = if (!uiState.isLoading) Icons.Default.Refresh else null,
+                            enabled = true, // Keep enabled to maintain focus
+                            requestInitialFocus = true,
+                            focusRequester = refreshButtonFocusRequester
                         )
 
                         // Exhibition button

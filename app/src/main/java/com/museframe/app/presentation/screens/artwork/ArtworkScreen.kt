@@ -61,6 +61,7 @@ fun ArtworkScreen(
     playlistId: String,
     artworkId: String,
     onBackClick: () -> Unit,
+    onNavigateToPlaylistDetail: (String) -> Unit = {},
     viewModel: ArtworkViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -71,12 +72,20 @@ fun ArtworkScreen(
 
     // Observe push commands from MainActivity
     LaunchedEffect(Unit) {
+        Timber.d("ArtworkScreen: Starting command flow collection")
         com.museframe.app.MainActivity.commandFlow.collect { command ->
+            Timber.d("ArtworkScreen received command: $command")
             when {
                 command == "PAUSE" -> viewModel.handlePauseCommand()
                 command == "RESUME" -> viewModel.handleResumeCommand()
-                command == "NEXT" -> viewModel.handleNextCommand()
-                command == "PREVIOUS" -> viewModel.handlePreviousCommand()
+                command == "NEXT" -> {
+                    Timber.d("Handling NEXT command")
+                    viewModel.handleNextCommand()
+                }
+                command == "PREVIOUS" -> {
+                    Timber.d("Handling PREVIOUS command")
+                    viewModel.handlePreviousCommand()
+                }
                 command.startsWith("UPDATE_ARTWORK:") -> {
                     // Parse artwork update data
                     val data = command.substringAfter("UPDATE_ARTWORK:")
@@ -89,11 +98,12 @@ fun ArtworkScreen(
                     }
                 }
                 command.startsWith("REFRESH_PLAYLIST:") -> {
-                    val refreshPlaylistId = command.substringAfter("REFRESH_PLAYLIST:")
-                    if (refreshPlaylistId == playlistId) {
-                        // Reload the playlist
-                        viewModel.loadPlaylistArtworks()
-                    }
+                    // Do nothing - ignore playlist refresh to avoid conflicts with transition system
+                    Timber.d("Ignoring REFRESH_PLAYLIST command to maintain playlist transition stability")
+                }
+                command.startsWith("UPDATE_PLAYLISTS") -> {
+                    // Do nothing - ignore playlists update to avoid conflicts with transition system
+                    Timber.d("Ignoring UPDATE_PLAYLISTS command to maintain playlist transition stability")
                 }
             }
         }
@@ -113,10 +123,17 @@ fun ArtworkScreen(
         }
     }
 
-    // Handle back navigation
+    // Handle back navigation - go to current playlist detail
     BackHandler {
         viewModel.pauseSlideshow()
-        onBackClick()
+        val currentPlaylistId = viewModel.getCurrentPlaylistId()
+        if (currentPlaylistId != playlistId) {
+            // If we've switched playlists, navigate to the current playlist detail
+            onNavigateToPlaylistDetail(currentPlaylistId)
+        } else {
+            // Same playlist, just go back normally
+            onBackClick()
+        }
     }
 
     // Auto-hide controls
@@ -169,7 +186,12 @@ fun ArtworkScreen(
                             }
                             Key.Escape, Key.Back -> {
                                 viewModel.pauseSlideshow()
-                                onBackClick()
+                                val currentPlaylistId = viewModel.getCurrentPlaylistId()
+                                if (currentPlaylistId != playlistId) {
+                                    onNavigateToPlaylistDetail(currentPlaylistId)
+                                } else {
+                                    onBackClick()
+                                }
                                 true
                             }
                             else -> false
@@ -217,7 +239,12 @@ fun ArtworkScreen(
                 onNext = viewModel::nextArtwork,
                 onClose = {
                     viewModel.pauseSlideshow()
-                    onBackClick()
+                    val currentPlaylistId = viewModel.getCurrentPlaylistId()
+                    if (currentPlaylistId != playlistId) {
+                        onNavigateToPlaylistDetail(currentPlaylistId)
+                    } else {
+                        onBackClick()
+                    }
                 }
             )
         }

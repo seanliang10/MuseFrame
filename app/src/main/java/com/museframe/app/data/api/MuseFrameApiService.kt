@@ -17,6 +17,12 @@ interface MuseFrameApiService {
         @Body request: TokenVerifyRequest
     ): Response<TokenVerifyResponse>
 
+    @GET("display/{displayId}")
+    suspend fun getDisplayDetails(
+        @Header("Authorization") token: String,
+        @Path("displayId") displayId: String
+    ): Response<DisplayDetailsResponse>
+
     @GET("display/{displayId}/playlists")
     suspend fun getPlaylists(
         @Header("Authorization") token: String,
@@ -69,9 +75,34 @@ interface MuseFrameApiService {
     @DELETE("display/{displayId}")
     suspend fun unpairDisplay(
         @Header("Authorization") token: String,
-        @Path("displayId") displayId: String
+        @Path("displayId") displayId: String,
+        @Query("source") source: String = "display"
     ): Response<Unit>
 }
+
+@kotlinx.serialization.Serializable
+data class DisplayDetailsResponse(
+    @kotlinx.serialization.SerialName("success")
+    val success: Boolean,
+    @kotlinx.serialization.SerialName("display")
+    val display: DisplayInfo? = null,
+    @kotlinx.serialization.SerialName("message")
+    val message: String? = null
+)
+
+@kotlinx.serialization.Serializable
+data class DisplayInfo(
+    @kotlinx.serialization.SerialName("id")
+    val id: Int,
+    @kotlinx.serialization.SerialName("name")
+    val name: String? = null,
+    @kotlinx.serialization.SerialName("volume")
+    val volume: Int? = null,
+    @kotlinx.serialization.SerialName("brightness")
+    val brightness: Int? = null,
+    @kotlinx.serialization.SerialName("is_paused")
+    val isPaused: Boolean? = null
+)
 
 @kotlinx.serialization.Serializable
 data class NextPlaylistResponse(

@@ -49,6 +49,6 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun logout() {
-        preferencesManager.clearAll()
+        preferencesManager.clearAuthData()
     }
 }

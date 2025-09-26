@@ -39,12 +39,12 @@ class PushReceiver : BroadcastReceiver() {
                 PushCommand.DISCONNECTED.value -> handleDisconnected(context)
                 PushCommand.PAUSE.value -> handlePause(context)
                 PushCommand.RESUME.value -> handleResume(context)
-                PushCommand.UPDATE_DISPLAY_SETTING.value -> handleUpdateDisplaySetting(context, data)
+                PushCommand.UPDATE_DISPLAY_SETTING.value -> handleUpdateDisplaySetting(context, intent)
                 PushCommand.REFRESH_PLAYLISTS.value -> handleRefreshPlaylists(context)
                 PushCommand.REFRESH_PLAYLIST.value -> handleRefreshPlaylist(context, data)
                 PushCommand.UPDATE_PLAYLIST_ARTWORK_SETTING.value -> handleUpdateArtworkSetting(context, data)
-                PushCommand.CAST.value -> handleCast(context, data)
-                PushCommand.CAST_EXHIBITION.value -> handleCastExhibition(context, data)
+                PushCommand.CAST.value -> handleCast(context, intent)
+                PushCommand.CAST_EXHIBITION.value -> handleCastExhibition(context, intent)
                 PushCommand.NEXT.value -> handleNext(context)
                 PushCommand.PREVIOUS.value -> handlePrevious(context)
                 else -> Log.w(TAG, "Unknown command: $commandType")
@@ -124,24 +124,60 @@ class PushReceiver : BroadcastReceiver() {
 
     private fun handlePause(context: Context) {
         val intent = Intent("com.museframe.PAUSE_SLIDESHOW")
+        intent.setPackage(context.packageName)
         context.sendBroadcast(intent)
     }
 
     private fun handleResume(context: Context) {
         val intent = Intent("com.museframe.RESUME_SLIDESHOW")
+        intent.setPackage(context.packageName)
         context.sendBroadcast(intent)
     }
 
-    private fun handleUpdateDisplaySetting(context: Context, data: String?) {
-        data?.let {
-            val intent = Intent("com.museframe.UPDATE_DISPLAY_SETTING")
-            intent.putExtra("data", it)
-            context.sendBroadcast(intent)
+    private fun handleUpdateDisplaySetting(context: Context, pushIntent: Intent) {
+        Log.d(TAG, "handleUpdateDisplaySetting called")
+
+        // UpdateDisplaySetting comes with individual fields from the push
+        val intent = Intent("com.museframe.UPDATE_DISPLAY_SETTING")
+
+        // Extract all the display settings from the push
+        // Note: Pushy sends these as different types based on the JSON
+        val name = pushIntent.getStringExtra("name")
+        val volume = pushIntent.getIntExtra("volume", -1).takeIf { it != -1 }
+        val brightness = pushIntent.getIntExtra("brightness", -1).takeIf { it != -1 }
+        val pause = pushIntent.getBooleanExtra("pause", false)
+        val hasPauseExtra = pushIntent.hasExtra("pause")
+
+        Log.d(TAG, "Extracted values - name: $name, volume: $volume, brightness: $brightness, pause: $pause (hasPause: $hasPauseExtra)")
+
+        // Create a JSON string with the settings
+        val settingsMap = mutableMapOf<String, String>()
+        name?.let { settingsMap["name"] = it }
+        volume?.let { settingsMap["volume"] = it.toString() }
+        brightness?.let { settingsMap["brightness"] = it.toString() }
+        if (hasPauseExtra) { settingsMap["pause"] = pause.toString() }
+
+        // Convert to JSON format for the data field
+        val dataString = settingsMap.entries.joinToString(",") { "${it.key}:${it.value}" }
+
+        Log.d(TAG, "Created data string: $dataString")
+
+        if (dataString.isNotEmpty()) {
+            intent.putExtra("data", dataString)
         }
+
+        // Add timestamp
+        intent.putExtra("timestamp", System.currentTimeMillis())
+
+        Log.d(TAG, "Broadcasting UPDATE_DISPLAY_SETTING intent with data: $dataString")
+        // Ensure the broadcast is sent to our app
+        intent.setPackage(context.packageName)
+        context.sendBroadcast(intent)
     }
 
     private fun handleRefreshPlaylists(context: Context) {
         val intent = Intent("com.museframe.REFRESH_PLAYLISTS")
+        intent.setPackage(context.packageName)
         context.sendBroadcast(intent)
     }
 
@@ -152,6 +188,7 @@ class PushReceiver : BroadcastReceiver() {
             playlistId?.let { id ->
                 val intent = Intent("com.museframe.REFRESH_PLAYLIST")
                 intent.putExtra("playlist_id", id)
+                intent.setPackage(context.packageName)
                 context.sendBroadcast(intent)
             }
         }
@@ -161,37 +198,86 @@ class PushReceiver : BroadcastReceiver() {
         data?.let {
             val intent = Intent("com.museframe.UPDATE_ARTWORK_SETTING")
             intent.putExtra("data", it)
+            intent.setPackage(context.packageName)
             context.sendBroadcast(intent)
         }
     }
 
-    private fun handleCast(context: Context, data: String?) {
-        data?.let {
-            val json = Json.parseToJsonElement(it).jsonObject
-            val playlistId = json["playlist_id"]?.jsonPrimitive?.content
-            playlistId?.let { id ->
-                val intent = Intent("com.museframe.CAST_PLAYLIST")
-                intent.putExtra("playlist_id", id)
-                context.sendBroadcast(intent)
+    private fun handleCast(context: Context, pushIntent: Intent) {
+        Log.d(TAG, "handleCast called")
+
+        val broadcastIntent = Intent("com.museframe.CAST_PLAYLIST")
+
+        // Try to get playlist_id directly from intent extras (similar to exhibition_id)
+        // It could come as string or int
+        var playlistId = pushIntent.getStringExtra("playlist_id")
+        if (playlistId == null) {
+            val intId = pushIntent.getIntExtra("playlist_id", 0)
+            if (intId != 0) {
+                playlistId = intId.toString()
             }
         }
+
+        // Also try from data field if not found in extras
+        if (playlistId == null) {
+            val data = pushIntent.getStringExtra("data")
+            data?.let {
+                try {
+                    val json = Json.parseToJsonElement(it).jsonObject
+                    playlistId = json["playlist_id"]?.jsonPrimitive?.content
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing cast data", e)
+                }
+            }
+        }
+
+        if (playlistId != null) {
+            Log.d(TAG, "Playlist ID: $playlistId")
+            broadcastIntent.putExtra("playlist_id", playlistId)
+            broadcastIntent.putExtra("start_slideshow", true) // Add flag to start slideshow
+
+            // Add timestamp for validation
+            broadcastIntent.putExtra("timestamp", System.currentTimeMillis())
+
+            broadcastIntent.setPackage(context.packageName)
+            context.sendBroadcast(broadcastIntent)
+            Log.d(TAG, "Broadcasting CAST_PLAYLIST intent with playlist_id: $playlistId")
+        } else {
+            Log.w(TAG, "No playlist_id found in Cast command")
+        }
     }
 
-    private fun handleCastExhibition(context: Context, data: String?) {
-        data?.let {
-            val intent = Intent("com.museframe.CAST_EXHIBITION")
-            intent.putExtra("data", it)
-            context.sendBroadcast(intent)
-        }
+    private fun handleCastExhibition(context: Context, pushIntent: Intent) {
+        Log.d(TAG, "handleCastExhibition called")
+
+        val broadcastIntent = Intent("com.museframe.CAST_EXHIBITION")
+
+        // Try to get exhibition_id directly from intent extras (as per log: exhibition_id=1)
+        val exhibitionId = pushIntent.getIntExtra("exhibition_id", 0).takeIf { it != 0 }?.toString()
+            ?: pushIntent.getStringExtra("exhibition_id")
+            ?: "default"
+
+        Log.d(TAG, "Exhibition ID: $exhibitionId")
+
+        broadcastIntent.putExtra("exhibition_id", exhibitionId)
+
+        // Add timestamp for validation
+        broadcastIntent.putExtra("timestamp", System.currentTimeMillis())
+
+        broadcastIntent.setPackage(context.packageName)
+        context.sendBroadcast(broadcastIntent)
+        Log.d(TAG, "Broadcasting CAST_EXHIBITION intent with exhibition_id: $exhibitionId")
     }
 
     private fun handleNext(context: Context) {
         val intent = Intent("com.museframe.NEXT_ARTWORK")
+        intent.setPackage(context.packageName)
         context.sendBroadcast(intent)
     }
 
     private fun handlePrevious(context: Context) {
         val intent = Intent("com.museframe.PREVIOUS_ARTWORK")
+        intent.setPackage(context.packageName)
         context.sendBroadcast(intent)
     }
 }

@@ -1,11 +1,12 @@
 package com.museframe.app.presentation.screens.exhibition
 
+import android.app.Application
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.museframe.app.domain.model.Exhibition
 import com.museframe.app.domain.model.ExhibitionItem
 import com.museframe.app.domain.repository.PlaylistRepository
+import com.museframe.app.presentation.base.NetworkAwareViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -16,9 +17,10 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ExhibitionViewModelNew @Inject constructor(
+    application: Application,
     savedStateHandle: SavedStateHandle,
     private val playlistRepository: PlaylistRepository
-) : ViewModel() {
+) : NetworkAwareViewModel(application) {
 
     private val exhibitionId: String = savedStateHandle.get<String>("exhibitionId") ?: ""
 
@@ -33,60 +35,62 @@ class ExhibitionViewModelNew @Inject constructor(
     }
 
     private fun loadExhibition() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+        checkNetworkAndExecute(
+            onNetworkAvailable = {
+                _uiState.update { it.copy(isLoading = true, error = null) }
 
-            try {
-                val result = playlistRepository.getCurrentExhibition()
+                try {
+                    val result = playlistRepository.getCurrentExhibition()
 
-                if (result.isSuccess) {
-                    exhibition = result.getOrNull()
+                    if (result.isSuccess) {
+                        exhibition = result.getOrNull()
 
-                    if (exhibition != null && exhibition!!.items.isNotEmpty()) {
-                        currentIndex = 0
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                exhibition = exhibition,
-                                currentItem = exhibition!!.items[currentIndex],
-                                currentIndex = currentIndex,
-                                totalItems = exhibition!!.items.size,
-                                error = null
-                            )
-                        }
-                    } else if (exhibition != null && exhibition!!.items.isEmpty()) {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                error = "No artworks in current exhibition"
-                            )
+                        if (exhibition != null && exhibition!!.items.isNotEmpty()) {
+                            currentIndex = 0
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    exhibition = exhibition,
+                                    currentItem = exhibition!!.items[currentIndex],
+                                    currentIndex = currentIndex,
+                                    totalItems = exhibition!!.items.size,
+                                    error = null
+                                )
+                            }
+                        } else if (exhibition != null && exhibition!!.items.isEmpty()) {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    error = "No artworks in current exhibition"
+                                )
+                            }
+                        } else {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    error = "No current exhibition found"
+                                )
+                            }
                         }
                     } else {
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
-                                error = "No current exhibition found"
+                                error = result.exceptionOrNull()?.message ?: "Failed to load exhibition"
                             )
                         }
                     }
-                } else {
+                } catch (e: Exception) {
+                    Timber.e(e, "Error loading exhibition")
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = result.exceptionOrNull()?.message ?: "Failed to load exhibition"
+                            error = e.message ?: "Unknown error occurred"
                         )
                     }
                 }
-            } catch (e: Exception) {
-                Timber.e(e, "Error loading exhibition")
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = e.message ?: "Unknown error occurred"
-                    )
-                }
             }
-        }
+        )
     }
 
     fun nextItem() {

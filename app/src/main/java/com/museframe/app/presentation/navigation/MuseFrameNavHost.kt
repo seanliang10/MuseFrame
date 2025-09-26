@@ -44,6 +44,9 @@ fun MuseFrameNavHost(
                     navController.navigate(Screen.Playlists.route) {
                         popUpTo(Screen.Welcome.route) { inclusive = true }
                     }
+                },
+                onNavigateToNoNetwork = {
+                    navController.navigate(Screen.NoNetwork.route)
                 }
             )
         }
@@ -64,6 +67,9 @@ fun MuseFrameNavHost(
                     navController.navigate(Screen.Welcome.route) {
                         popUpTo(0) { inclusive = true }
                     }
+                },
+                onNavigateToNoNetwork = {
+                    navController.navigate(Screen.NoNetwork.route)
                 }
             )
         }
@@ -89,6 +95,12 @@ fun MuseFrameNavHost(
                 artworkId = artworkId,
                 onBackClick = {
                     navController.popBackStack()
+                },
+                onNavigateToPlaylistDetail = { currentPlaylistId ->
+                    // Navigate to the current playlist detail page
+                    navController.navigate(Screen.PlaylistDetail.createRoute(currentPlaylistId)) {
+                        popUpTo(Screen.Playlists.route) { inclusive = false }
+                    }
                 }
             )
         }
@@ -98,12 +110,24 @@ fun MuseFrameNavHost(
                 exhibitionId = "default", // Default exhibition
                 onBackClick = {
                     navController.popBackStack()
+                },
+                onNavigateToNoNetwork = {
+                    navController.navigate(Screen.NoNetwork.route)
                 }
             )
         }
 
         composable(Screen.NoNetwork.route) {
-            // TODO: Implement NoNetworkScreen
+            com.museframe.app.presentation.screens.common.NoNetworkScreen(
+                onRetry = {
+                    // Go back to previous screen and re-initialize
+                    navController.popBackStack()
+                },
+                onNetworkRestored = {
+                    // Go back to previous screen when network is restored
+                    navController.popBackStack()
+                }
+            )
         }
 
         composable(Screen.Versions.route) {

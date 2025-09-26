@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity(), NavigationHandler {
 
     private val pushCommandReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            Timber.d("Broadcast received: action=${intent?.action}")
+            Timber.d("MainActivity: Broadcast received: action=${intent?.action}")
 
             // Special handling for auth-related commands
             when (intent?.action) {
@@ -86,11 +86,33 @@ class MainActivity : ComponentActivity(), NavigationHandler {
     }
 
     override fun navigateToExhibition(exhibitionId: String) {
-        navController?.navigate(Screen.Exhibition.route)
+        Timber.d("navigateToExhibition called with exhibitionId: $exhibitionId")
+        navController?.navigate(Screen.Exhibition.route) {
+            // Clear back stack to playlists route and navigate
+            popUpTo(Screen.Playlists.route) {
+                inclusive = false
+            }
+            launchSingleTop = true
+        } ?: Timber.e("NavController is null, cannot navigate to exhibition")
     }
 
     override fun sendCommandToScreen(command: String) {
-        commandFlow.tryEmit(command)
+        Timber.d("sendCommandToScreen called with command: $command")
+        val emitted = commandFlow.tryEmit(command)
+        Timber.d("Command emission result: $emitted")
+    }
+
+    override fun navigateToPlaylistAndStartSlideshow(playlistId: String) {
+        Timber.d("navigateToPlaylistAndStartSlideshow called with playlistId: $playlistId")
+        // Navigate to the artwork screen with the first artwork of the playlist
+        // We'll use a special marker to indicate we should start with the first artwork
+        navController?.navigate(Screen.Artwork.createRoute(playlistId, "first")) {
+            // Clear back stack to playlists
+            popUpTo(Screen.Playlists.route) {
+                inclusive = false
+            }
+            launchSingleTop = true
+        } ?: Timber.e("NavController is null, cannot navigate to artwork")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -196,6 +218,10 @@ class MainActivity : ComponentActivity(), NavigationHandler {
     }
 
     companion object {
-        val commandFlow = MutableSharedFlow<String>()
+        // Use replay = 1 to cache the last command and extraBufferCapacity to buffer emissions
+        val commandFlow = MutableSharedFlow<String>(
+            replay = 1,
+            extraBufferCapacity = 10
+        )
     }
 }

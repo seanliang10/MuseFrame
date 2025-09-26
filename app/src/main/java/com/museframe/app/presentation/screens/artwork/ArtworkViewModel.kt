@@ -22,8 +22,10 @@ class ArtworkViewModel @Inject constructor(
     private val preferencesManager: PreferencesManager
 ) : ViewModel() {
 
-    private val playlistId: String = savedStateHandle.get<String>("playlistId") ?: ""
+    private val initialPlaylistId: String = savedStateHandle.get<String>("playlistId") ?: ""
     private val initialArtworkId: String = savedStateHandle.get<String>("artworkId") ?: ""
+    private var currentPlaylistId: String = initialPlaylistId
+    private val shouldStartFirst: Boolean = initialArtworkId == "first"
 
     private val _uiState = MutableStateFlow(ArtworkUiState())
     val uiState: StateFlow<ArtworkUiState> = _uiState.asStateFlow()
@@ -31,17 +33,47 @@ class ArtworkViewModel @Inject constructor(
     private var slideshowJob: Job? = null
     private var playlistArtworksList: List<PlaylistArtwork> = emptyList()
     private var currentIndex: Int = 0
-    private var nextPlaylistId: String? = null
+    private var allPlaylists: List<String> = emptyList() // Store all playlist IDs
+    private var currentPlaylistIndex: Int = 0 // Track current playlist in the list
     private var nextPlaylistArtworks: List<PlaylistArtwork> = emptyList()
     private var deviceId: String? = null
+
+    fun getCurrentPlaylistId(): String = currentPlaylistId
 
     init {
         loadPlaylistArtworks()
         observeSettings()
+        loadAllPlaylists()
         // Start slideshow by default when entering artwork view
         viewModelScope.launch {
             preferencesManager.updateDisplaySettings(isPaused = false)
             deviceId = preferencesManager.deviceId.first()
+        }
+    }
+
+    private fun loadAllPlaylists() {
+        viewModelScope.launch {
+            try {
+                val currentDeviceId = deviceId ?: preferencesManager.deviceId.first()
+                currentDeviceId?.let { devId ->
+                    // Get all playlists for this device
+                    val result = playlistRepository.getPlaylists(devId)
+                    if (result.isSuccess) {
+                        val playlists = result.getOrNull() ?: emptyList()
+                        allPlaylists = playlists.map { it.id }
+                        // Find current playlist index
+                        currentPlaylistIndex = allPlaylists.indexOf(currentPlaylistId)
+                        if (currentPlaylistIndex == -1) currentPlaylistIndex = 0
+
+                        Timber.d("Loaded ${allPlaylists.size} playlists. Current playlist index: $currentPlaylistIndex")
+
+                        // Preload next playlist if available
+                        preloadNextPlaylistInternal()
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Error loading all playlists")
+            }
         }
     }
 
@@ -65,13 +97,19 @@ class ArtworkViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true) }
 
             try {
-                val result = playlistRepository.getPlaylistArtworksWithSettings(playlistId)
+                val result = playlistRepository.getPlaylistArtworksWithSettings(currentPlaylistId)
                 if (result.isSuccess) {
                     playlistArtworksList = result.getOrNull() ?: emptyList()
 
                     // Find initial artwork index
-                    currentIndex = playlistArtworksList.indexOfFirst { it.artwork.id == initialArtworkId }
-                    if (currentIndex == -1) currentIndex = 0
+                    if (shouldStartFirst) {
+                        // Cast command wants to start from the first artwork
+                        currentIndex = 0
+                        Timber.d("Starting slideshow from first artwork (Cast command)")
+                    } else {
+                        currentIndex = playlistArtworksList.indexOfFirst { it.artwork.id == initialArtworkId }
+                        if (currentIndex == -1) currentIndex = 0
+                    }
 
                     if (playlistArtworksList.isNotEmpty()) {
                         loadCurrentArtwork()
@@ -102,7 +140,11 @@ class ArtworkViewModel @Inject constructor(
         if (playlistArtworksList.isEmpty()) return
 
         val currentPlaylistArtwork = playlistArtworksList[currentIndex]
-        Timber.d("loadCurrentArtwork - index: $currentIndex, artwork: ${currentPlaylistArtwork.artwork.title}, mediaType: ${currentPlaylistArtwork.artwork.mediaType}, duration: ${currentPlaylistArtwork.duration}")
+
+        // Update the current playlist ID based on the artwork's actual playlist
+        currentPlaylistId = currentPlaylistArtwork.playlistId.toString()
+
+        Timber.d("loadCurrentArtwork - index: $currentIndex, artwork: ${currentPlaylistArtwork.artwork.title}, playlistId: $currentPlaylistId, mediaType: ${currentPlaylistArtwork.artwork.mediaType}, duration: ${currentPlaylistArtwork.duration}")
         _uiState.update { state ->
             state.copy(
                 isLoading = false,
@@ -167,16 +209,41 @@ class ArtworkViewModel @Inject constructor(
         if (nextIndex >= playlistArtworksList.size) {
             // Switch to next playlist if available
             if (nextPlaylistArtworks.isNotEmpty()) {
-                Timber.d("Switching to next playlist: $nextPlaylistId")
+                Timber.d("Switching to next playlist")
                 playlistArtworksList = nextPlaylistArtworks
                 currentIndex = 0
-                loadCurrentArtwork()
+                // Update current playlist index
+                currentPlaylistIndex = (currentPlaylistIndex + 1) % allPlaylists.size
+                loadCurrentArtwork() // This will update currentPlaylistId from the artwork
                 // Preload the next playlist after this one
-                preloadNextPlaylist()
+                preloadNextPlaylistInternal()
             } else {
-                // Loop back to beginning if no next playlist
-                currentIndex = 0
-                loadCurrentArtwork()
+                // No next playlist loaded, try to load it now
+                Timber.d("No next playlist preloaded, attempting to load")
+                if (allPlaylists.isNotEmpty()) {
+                    // Move to next playlist
+                    currentPlaylistIndex = (currentPlaylistIndex + 1) % allPlaylists.size
+                    val nextPlaylistId = allPlaylists[currentPlaylistIndex]
+                    viewModelScope.launch {
+                        val result = playlistRepository.getPlaylistArtworksWithSettings(nextPlaylistId)
+                        if (result.isSuccess && result.getOrNull()?.isNotEmpty() == true) {
+                            playlistArtworksList = result.getOrNull()!!
+                            currentIndex = 0
+                            loadCurrentArtwork()
+                            // Preload the next one
+                            preloadNextPlaylistInternal()
+                        } else {
+                            // If loading fails, loop back to beginning of current playlist
+                            Timber.e("Failed to load next playlist, looping current")
+                            currentIndex = 0
+                            loadCurrentArtwork()
+                        }
+                    }
+                } else {
+                    // No playlists available, loop back to beginning
+                    currentIndex = 0
+                    loadCurrentArtwork()
+                }
             }
         } else {
             currentIndex = nextIndex
@@ -187,8 +254,13 @@ class ArtworkViewModel @Inject constructor(
     fun previousArtwork() {
         if (playlistArtworksList.isEmpty()) return
 
-        currentIndex = if (currentIndex > 0) currentIndex - 1 else playlistArtworksList.size - 1
-        loadCurrentArtwork()
+        // If we're at the first artwork, don't go to the last one - just stay at first
+        if (currentIndex > 0) {
+            currentIndex -= 1
+            loadCurrentArtwork() // This will update currentPlaylistId from the artwork
+        } else {
+            Timber.d("Already at first artwork, ignoring previous command")
+        }
     }
 
     fun updateVolume(volume: Float) {
@@ -208,25 +280,31 @@ class ArtworkViewModel @Inject constructor(
     }
 
     private fun preloadNextPlaylist() {
+        preloadNextPlaylistInternal()
+    }
+
+    private fun preloadNextPlaylistInternal() {
         viewModelScope.launch {
             try {
-                val currentDeviceId = deviceId ?: return@launch
+                if (allPlaylists.isEmpty()) {
+                    Timber.d("No playlists available to preload")
+                    return@launch
+                }
 
-                // Get the next playlist ID
-                val nextResult = playlistRepository.getNextPlaylist(currentDeviceId, playlistId)
+                // Calculate next playlist index (cycle through playlists)
+                val nextIndex = (currentPlaylistIndex + 1) % allPlaylists.size
+                val nextPlaylistId = allPlaylists[nextIndex]
 
-                if (nextResult.isSuccess) {
-                    nextPlaylistId = nextResult.getOrNull()
+                Timber.d("Preloading next playlist: $nextPlaylistId (index: $nextIndex)")
 
-                    // Preload the artworks for the next playlist
-                    nextPlaylistId?.let { nextId ->
-                        Timber.d("Preloading next playlist: $nextId")
-                        val artworksResult = playlistRepository.getPlaylistArtworksWithSettings(nextId)
-                        if (artworksResult.isSuccess) {
-                            nextPlaylistArtworks = artworksResult.getOrNull() ?: emptyList()
-                            Timber.d("Preloaded ${nextPlaylistArtworks.size} artworks for next playlist")
-                        }
-                    }
+                // Preload the artworks for the next playlist
+                val artworksResult = playlistRepository.getPlaylistArtworksWithSettings(nextPlaylistId)
+                if (artworksResult.isSuccess) {
+                    nextPlaylistArtworks = artworksResult.getOrNull() ?: emptyList()
+                    Timber.d("Preloaded ${nextPlaylistArtworks.size} artworks for playlist $nextPlaylistId")
+                } else {
+                    Timber.e("Failed to preload playlist $nextPlaylistId")
+                    nextPlaylistArtworks = emptyList()
                 }
             } catch (e: Exception) {
                 Timber.e(e, "Error preloading next playlist")
@@ -237,22 +315,28 @@ class ArtworkViewModel @Inject constructor(
 
     fun handleNextCommand() {
         // Handle next command from push notification
+        Timber.d("handleNextCommand called, isPaused: ${_uiState.value.isPaused}")
         if (!_uiState.value.isPaused) {
             nextArtwork()
+        } else {
+            Timber.d("Ignoring NEXT command because slideshow is paused")
         }
     }
 
     fun handlePreviousCommand() {
         // Handle previous command from push notification
+        Timber.d("handlePreviousCommand called, isPaused: ${_uiState.value.isPaused}")
         if (!_uiState.value.isPaused) {
             previousArtwork()
+        } else {
+            Timber.d("Ignoring PREVIOUS command because slideshow is paused")
         }
     }
 
     fun handleArtworkSettingsUpdate(playlistId: String, artworkId: String) {
         // Check if this update is for the current artwork
         val currentArtwork = _uiState.value.currentArtwork
-        if (currentArtwork?.id == artworkId && this.playlistId == playlistId) {
+        if (currentArtwork?.id == artworkId && currentPlaylistId == playlistId) {
             // Reload current artwork settings
             viewModelScope.launch {
                 try {

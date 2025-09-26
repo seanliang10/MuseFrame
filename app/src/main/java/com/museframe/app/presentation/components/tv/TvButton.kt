@@ -36,9 +36,11 @@ fun TvButton(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     colors: TvButtonColors = TvButtonDefaults.colors(),
-    requestInitialFocus: Boolean = false
+    requestInitialFocus: Boolean = false,
+    focusRequester: FocusRequester? = null
 ) {
-    val focusRequester = remember { FocusRequester() }
+    val defaultFocusRequester = remember { FocusRequester() }
+    val actualFocusRequester = focusRequester ?: defaultFocusRequester
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
@@ -47,7 +49,7 @@ fun TvButton(
             // Small delay to ensure the component is properly laid out
             kotlinx.coroutines.delay(100)
             try {
-                focusRequester.requestFocus()
+                actualFocusRequester.requestFocus()
             } catch (e: Exception) {
                 // Ignore if focus can't be requested yet
             }
@@ -95,10 +97,10 @@ fun TvButton(
         label = "borderWidth"
     )
 
-    Box(
+    Surface(
         modifier = modifier
             .scale(scale)
-            .focusRequester(focusRequester)
+            .focusRequester(actualFocusRequester)
             .focusProperties {
                 // This helps prevent focus from getting lost
             }
@@ -116,39 +118,36 @@ fun TvButton(
                 indication = null,
                 enabled = enabled,
                 onClick = onClick
-            )
-    ) {
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = backgroundColor,
-            border = BorderStroke(
-                width = borderWidth.dp,
-                color = borderColor
             ),
-            shadowElevation = if (isFocused) 8.dp else 2.dp
+        shape = RoundedCornerShape(12.dp),
+        color = backgroundColor,
+        border = BorderStroke(
+            width = borderWidth.dp,
+            color = borderColor
+        ),
+        shadowElevation = if (isFocused) 8.dp else 2.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 28.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier
-                    .padding(horizontal = 28.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                icon?.let {
-                    Icon(
-                        imageVector = it,
-                        contentDescription = null,
-                        tint = contentColor,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-                Text(
-                    text = text,
-                    color = contentColor,
-                    fontSize = if (isFocused) 17.sp else 16.sp,
-                    fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Normal
+            icon?.let {
+                Icon(
+                    imageVector = it,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(20.dp)
                 )
+                Spacer(modifier = Modifier.width(8.dp))
             }
+            Text(
+                text = text,
+                color = contentColor,
+                fontSize = if (isFocused) 17.sp else 16.sp,
+                fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Normal
+            )
         }
     }
 }

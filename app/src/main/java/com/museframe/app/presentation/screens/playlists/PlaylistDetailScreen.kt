@@ -113,10 +113,14 @@ fun PlaylistDetailScreen(
 
                     // Refresh button
                     TvButton(
-                        onClick = { viewModel.refresh() },
-                        text = "Refresh",
-                        icon = Icons.Default.Refresh,
-                        enabled = !uiState.isLoading
+                        onClick = {
+                            if (!uiState.isLoading) {
+                                viewModel.refresh()
+                            }
+                        },
+                        text = if (uiState.isLoading) "Loading..." else "Refresh",
+                        icon = if (!uiState.isLoading) Icons.Default.Refresh else null,
+                        enabled = true // Keep enabled to maintain focus
                     )
                 }
             }
