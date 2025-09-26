@@ -81,6 +81,8 @@ class PlaylistsViewModel @Inject constructor(
     }
 
     fun refresh() {
+        // When refreshing, also sync display settings from API (source of truth)
+        fetchDisplayDetails()
         loadPlaylists()
     }
 
@@ -91,9 +93,11 @@ class PlaylistsViewModel @Inject constructor(
     private fun fetchDisplayDetails() {
         viewModelScope.launch {
             // Fetch latest display details from API on startup
+            // API is the source of truth - this should override any local pause state
+            Timber.d("Fetching display details from API (source of truth for pause state)")
             val result = deviceRepository.fetchAndUpdateDisplayDetails()
             if (result.isSuccess) {
-                Timber.d("Successfully fetched display details from API")
+                Timber.d("Successfully synced display settings from API - pause state should now be accurate")
             } else {
                 Timber.w("Failed to fetch display details: ${result.exceptionOrNull()?.message}")
             }

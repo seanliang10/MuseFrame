@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -65,6 +66,7 @@ fun ArtworkScreen(
     artworkId: String,
     onBackClick: () -> Unit,
     onNavigateToPlaylistDetail: (String) -> Unit = {},
+    onNavigateToPlaylists: () -> Unit = {},
     viewModel: ArtworkViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -72,6 +74,15 @@ fun ArtworkScreen(
     val activity = context as? Activity
     val focusRequester = remember { FocusRequester() }
     val density = LocalDensity.current
+
+    // Handle 404 errors - navigate to playlists when playlist/artwork is deleted
+    LaunchedEffect(uiState.shouldNavigateToPlaylists) {
+        if (uiState.shouldNavigateToPlaylists) {
+            Timber.d("Playlist/Artwork deleted (404), navigating to playlists")
+            viewModel.clearNavigationFlag()
+            onNavigateToPlaylists()
+        }
+    }
 
     // Observe push commands from MainActivity
     LaunchedEffect(Unit) {
@@ -251,20 +262,27 @@ fun ArtworkScreen(
                 viewModel.toggleControls()
             }
     ) {
-        uiState.currentPlaylistArtwork?.let { playlistArtwork ->
-            ArtworkDisplay(
-                playlistArtwork = playlistArtwork,
-                isPaused = uiState.isPaused,
-                onVideoEnded = {
-                    if (!uiState.isPaused) {
-                        Timber.d("Video ended and not paused, advancing to next artwork")
-                        viewModel.nextArtwork()
-                    } else {
-                        Timber.d("Video ended but paused, will loop current video")
-                        // Video will loop automatically when isPaused is true
+        // Smooth crossfade transition between artworks
+        Crossfade(
+            targetState = uiState.currentPlaylistArtwork,
+            animationSpec = tween(durationMillis = 800), // 800ms fade transition
+            label = "artwork_transition"
+        ) { playlistArtwork ->
+            if (playlistArtwork != null) {
+                ArtworkDisplay(
+                    playlistArtwork = playlistArtwork,
+                    isPaused = uiState.isPaused,
+                    onVideoEnded = {
+                        if (!uiState.isPaused) {
+                            Timber.d("Video ended and not paused, advancing to next artwork")
+                            viewModel.nextArtwork()
+                        } else {
+                            Timber.d("Video ended but paused, will loop current video")
+                            // Video will loop automatically when isPaused is true
+                        }
                     }
-                }
-            )
+                )
+            }
         }
 
         // Controls overlay

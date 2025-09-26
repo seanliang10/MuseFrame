@@ -122,7 +122,10 @@ class PreferencesManager @Inject constructor(
             volume?.let { preferences[VOLUME_KEY] = it }
             brightness?.let { preferences[BRIGHTNESS_KEY] = it }
             duration?.let { preferences[SLIDESHOW_DURATION_KEY] = it }
-            isPaused?.let { preferences[IS_PAUSED_KEY] = it }
+            isPaused?.let {
+                preferences[IS_PAUSED_KEY] = it
+                Timber.d("PreferencesManager: Updated pause state to $it")
+            }
         }
     }
 

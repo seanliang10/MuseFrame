@@ -100,7 +100,7 @@ data class DisplayInfo(
     val volume: Int? = null,
     @kotlinx.serialization.SerialName("brightness")
     val brightness: Int? = null,
-    @kotlinx.serialization.SerialName("is_paused")
+    @kotlinx.serialization.SerialName("pause")
     val isPaused: Boolean? = null
 )
 

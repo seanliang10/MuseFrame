@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.museframe.app.domain.model.Artwork
 import com.museframe.app.domain.model.PlaylistArtwork
 import com.museframe.app.domain.repository.PlaylistRepository
+import com.museframe.app.domain.exception.HttpException
 import com.museframe.app.data.local.PreferencesManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -39,6 +40,10 @@ class ArtworkViewModel @Inject constructor(
     private var deviceId: String? = null
 
     fun getCurrentPlaylistId(): String = currentPlaylistId
+
+    fun clearNavigationFlag() {
+        _uiState.update { it.copy(shouldNavigateToPlaylists = false) }
+    }
 
     init {
         loadPlaylistArtworks()
@@ -131,20 +136,48 @@ class ArtworkViewModel @Inject constructor(
                         preloadNextPlaylist()
                     }
                 } else {
+                    // Check if this is a 404 error (playlist deleted)
+                    val error = result.exceptionOrNull()
+                    val is404 = error is HttpException && error.is404()
+                    val errorMessage = when {
+                        is404 -> "This playlist has been deleted"
+                        error != null -> error.message ?: "Unknown error"
+                        else -> "Failed to load playlist"
+                    }
+
+                    Timber.e("Failed to load playlist artworks: $errorMessage")
+
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = result.exceptionOrNull()?.message
+                            error = errorMessage,
+                            shouldNavigateToPlaylists = is404
                         )
+                    }
+
+                    if (is404) {
+                        Timber.d("Playlist not found (404), triggering navigation to playlists")
                     }
                 }
             } catch (e: Exception) {
+                val is404 = e is HttpException && e.is404()
+                val errorMessage = when {
+                    is404 -> "This playlist has been deleted"
+                    else -> e.message ?: "Unknown error"
+                }
+
                 Timber.e(e, "Error loading artworks")
+
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        error = e.message
+                        error = errorMessage,
+                        shouldNavigateToPlaylists = is404
                     )
+                }
+
+                if (is404) {
+                    Timber.d("Playlist not found (404), triggering navigation to playlists")
                 }
             }
         }
@@ -184,17 +217,18 @@ class ArtworkViewModel @Inject constructor(
     }
 
     fun pauseSlideshow() {
+        // Only pause locally when user navigates away
+        // Don't update global state - that should only be done by push commands or API sync
         slideshowJob?.cancel()
-        viewModelScope.launch {
-            preferencesManager.updateDisplaySettings(isPaused = true)
-        }
+        _uiState.update { it.copy(isPaused = true) }
+        Timber.d("Paused slideshow locally (navigation away) - not updating global state")
     }
 
     fun resumeSlideshow() {
-        viewModelScope.launch {
-            preferencesManager.updateDisplaySettings(isPaused = false)
-        }
+        // Only resume locally when user clicks resume button
+        // Don't update global state - that should only be done by push commands or API sync
         _uiState.update { it.copy(isPaused = false) }
+        Timber.d("Resumed slideshow locally (UI action) - not updating global state")
     }
 
     fun handlePauseCommand() {
@@ -237,6 +271,20 @@ class ArtworkViewModel @Inject constructor(
 
         // Check if we're at the end of current playlist
         if (nextIndex >= playlistArtworksList.size) {
+            // Special case: if only one artwork total, always loop it
+            if (playlistArtworksList.size == 1 && allPlaylists.size <= 1) {
+                Timber.d("Only one artwork in single playlist, looping")
+                // Force a reload by clearing the current artwork first
+                _uiState.update { it.copy(currentPlaylistArtwork = null) }
+                currentIndex = 0
+                // Small delay to ensure UI updates
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(100)
+                    loadCurrentArtwork()
+                }
+                return
+            }
+
             // Switch to next playlist if available
             if (nextPlaylistArtworks.isNotEmpty()) {
                 Timber.d("Switching to next playlist")
@@ -263,10 +311,24 @@ class ArtworkViewModel @Inject constructor(
                             // Preload the next one
                             preloadNextPlaylistInternal()
                         } else {
-                            // If loading fails, loop back to beginning of current playlist
-                            Timber.e("Failed to load next playlist, looping current")
-                            currentIndex = 0
-                            loadCurrentArtwork()
+                            val error = result.exceptionOrNull()
+                            val is404 = error is HttpException && error.is404()
+
+                            if (is404) {
+                                // Playlist was deleted, navigate back to playlists
+                                Timber.e("Next playlist not found (404), navigating to playlists")
+                                _uiState.update {
+                                    it.copy(
+                                        shouldNavigateToPlaylists = true,
+                                        error = "The next playlist has been deleted"
+                                    )
+                                }
+                            } else {
+                                // Other error, loop back to beginning of current playlist
+                                Timber.e("Failed to load next playlist, looping current")
+                                currentIndex = 0
+                                loadCurrentArtwork()
+                            }
                         }
                     }
                 } else {
@@ -403,12 +465,42 @@ class ArtworkViewModel @Inject constructor(
                             }
                         }
                     } else {
-                        Timber.e("Failed to fetch updated artwork settings")
-                        _uiState.update { it.copy(isLoading = false) }
+                        // Check if this is a 404 error
+                        val error = result.exceptionOrNull()
+                        val is404 = error is HttpException && error.is404()
+
+                        Timber.e("Failed to fetch updated artwork settings: ${error?.message}")
+
+                        if (is404) {
+                            Timber.d("Artwork not found (404), triggering navigation to playlists")
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    shouldNavigateToPlaylists = true,
+                                    error = "This artwork or playlist has been deleted"
+                                )
+                            }
+                        } else {
+                            _uiState.update { it.copy(isLoading = false) }
+                        }
                     }
                 } catch (e: Exception) {
+                    val is404 = e is HttpException && e.is404()
+
                     Timber.e(e, "Error updating artwork settings")
-                    _uiState.update { it.copy(isLoading = false) }
+
+                    if (is404) {
+                        Timber.d("Artwork not found (404), triggering navigation to playlists")
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                shouldNavigateToPlaylists = true,
+                                error = "This artwork or playlist has been deleted"
+                            )
+                        }
+                    } else {
+                        _uiState.update { it.copy(isLoading = false) }
+                    }
                 }
             }
         } else {
@@ -433,5 +525,6 @@ data class ArtworkUiState(
     val slideshowDuration: Int = 30,
     val volume: Float = 1.0f,
     val brightness: Float = 1.0f,
-    val error: String? = null
+    val error: String? = null,
+    val shouldNavigateToPlaylists: Boolean = false // Add flag for 404 navigation
 )

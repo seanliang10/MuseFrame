@@ -137,14 +137,15 @@ class DeviceRepositoryImpl @Inject constructor(
 
             if (response.isSuccessful && response.body()?.success == true) {
                 response.body()?.display?.let { display ->
-                    // Update display settings with values from API
+                    // Update only name and pause status from API
+                    // Don't update volume/brightness as user may have different system settings
+                    // API is source of truth - always update pause state even if null
+                    val pauseState = display.isPaused ?: false // Default to false if null
                     preferencesManager.updateDisplaySettings(
                         name = display.name,
-                        volume = display.volume?.toFloat()?.div(100f),
-                        brightness = display.brightness?.toFloat()?.div(100f),
-                        isPaused = display.isPaused
+                        isPaused = pauseState
                     )
-                    Timber.d("Updated display details from API: name=${display.name}")
+                    Timber.d("API SYNC - Updated display settings: name=${display.name}, isPaused=$pauseState (API returned: ${display.isPaused})")
                 }
                 Result.success(Unit)
             } else {

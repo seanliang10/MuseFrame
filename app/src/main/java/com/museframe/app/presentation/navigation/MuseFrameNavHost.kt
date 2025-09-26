@@ -101,6 +101,13 @@ fun MuseFrameNavHost(
                     navController.navigate(Screen.PlaylistDetail.createRoute(currentPlaylistId)) {
                         popUpTo(Screen.Playlists.route) { inclusive = false }
                     }
+                },
+                onNavigateToPlaylists = {
+                    // Navigate back to playlists when artwork/playlist is deleted (404)
+                    navController.navigate(Screen.Playlists.route) {
+                        popUpTo(Screen.Playlists.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             )
         }

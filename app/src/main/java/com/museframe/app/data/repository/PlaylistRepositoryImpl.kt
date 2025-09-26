@@ -10,6 +10,7 @@ import com.museframe.app.domain.model.Adjustment
 import com.museframe.app.domain.model.Exhibition
 import com.museframe.app.domain.model.ExhibitionItem
 import com.museframe.app.domain.repository.PlaylistRepository
+import com.museframe.app.domain.exception.HttpException
 import kotlinx.coroutines.flow.first
 import timber.log.Timber
 import javax.inject.Inject
@@ -45,7 +46,7 @@ class PlaylistRepositoryImpl @Inject constructor(
                 } ?: emptyList()
                 Result.success(playlists)
             } else {
-                Result.failure(Exception("Failed to get playlists: ${response.code()}"))
+                Result.failure(HttpException(response.code(), "Failed to get playlists"))
             }
         } catch (e: Exception) {
             Timber.e(e, "Error getting playlists")
@@ -87,7 +88,7 @@ class PlaylistRepositoryImpl @Inject constructor(
                 } ?: emptyList()
                 Result.success(artworks)
             } else {
-                Result.failure(Exception("Failed to get artworks: ${response.code()}"))
+                Result.failure(HttpException(response.code(), "Failed to get artworks"))
             }
         } catch (e: Exception) {
             Timber.e(e, "Error getting playlist artworks")
@@ -194,7 +195,7 @@ class PlaylistRepositoryImpl @Inject constructor(
                 } ?: emptyList()
                 Result.success(playlistArtworks)
             } else {
-                Result.failure(Exception("Failed to get artworks: ${response.code()}"))
+                Result.failure(HttpException(response.code(), "Failed to get artworks"))
             }
         } catch (e: Exception) {
             Timber.e(e, "Error getting playlist artworks with settings")
