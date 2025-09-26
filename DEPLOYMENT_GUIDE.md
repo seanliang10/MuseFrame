@@ -2,9 +2,9 @@
 
 ## 🔄 Version Bump
 
-When releasing a new version, update the following files:
+When releasing a new version, update the version in **ONE PLACE ONLY**:
 
-### 1. **app/build.gradle.kts**
+### **app/build.gradle.kts** (Single Source of Truth)
 Update both `versionCode` and `versionName`:
 ```kotlin
 defaultConfig {
@@ -22,6 +22,11 @@ defaultConfig {
 - Currently using format: Major(3) + Minor(00) + Patch(100) = 300100
 - Example: 3.0.2 → 300200, 3.1.0 → 301000
 - Must be higher than any previously installed version
+
+**Automatic Propagation:**
+- The version automatically updates across the entire app via `BuildConfig.VERSION_NAME` and `BuildConfig.VERSION_CODE`
+- Used in: Splash screen, device registration API, version check, etc.
+- No need to update version numbers anywhere else in the code
 
 ---
 

@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.museframe.app.BuildConfig
 import com.museframe.app.R
 
 @Composable
@@ -86,7 +87,7 @@ fun SplashScreen(
 
         // Version info at bottom
         Text(
-            text = "Version 3.0.1",
+            text = "Version ${BuildConfig.VERSION_NAME}",
             style = MaterialTheme.typography.bodySmall,
             color = Color.Gray,
             modifier = Modifier

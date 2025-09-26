@@ -52,6 +52,7 @@ import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.Player
+import com.google.android.exoplayer2.DefaultLoadControl
 import com.google.android.exoplayer2.ui.StyledPlayerView
 import com.museframe.app.domain.model.MediaType
 import com.museframe.app.domain.model.PlaylistArtwork
@@ -401,15 +402,32 @@ fun ArtworkDisplay(
                             )
                         }
                         MediaType.VIDEO -> {
-                            VideoPlayer(
-                                videoUrl = playlistArtwork.artwork.displayUrl,
-                                volume = playlistArtwork.artwork.volume,
-                                zoom = playlistArtwork.zoom,
-                                offsetX = playlistArtwork.adjustment.x,
-                                offsetY = playlistArtwork.adjustment.y,
-                                isPaused = isPaused,
-                                onEnded = onVideoEnded
-                            )
+                            var isBuffering by remember { mutableStateOf(false) }
+
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                VideoPlayer(
+                                    videoUrl = playlistArtwork.artwork.displayUrl,
+                                    volume = playlistArtwork.artwork.volume,
+                                    zoom = playlistArtwork.zoom,
+                                    offsetX = playlistArtwork.adjustment.x,
+                                    offsetY = playlistArtwork.adjustment.y,
+                                    isPaused = isPaused,
+                                    onEnded = onVideoEnded,
+                                    onBufferingChanged = { isBuffering = it }
+                                )
+
+                                if (isBuffering) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            color = Color.White,
+                                            modifier = Modifier.size(48.dp)
+                                        )
+                                    }
+                                }
+                            }
                     }
                 }
             }
@@ -455,15 +473,32 @@ fun ArtworkDisplay(
                             )
                         }
                         MediaType.VIDEO -> {
-                            VideoPlayer(
-                                videoUrl = playlistArtwork.artwork.displayUrl,
-                                volume = playlistArtwork.artwork.volume,
-                                zoom = playlistArtwork.zoom,
-                                offsetX = playlistArtwork.adjustment.x,
-                                offsetY = playlistArtwork.adjustment.y,
-                                isPaused = isPaused,
-                                onEnded = onVideoEnded
-                            )
+                            var isBuffering by remember { mutableStateOf(false) }
+
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                VideoPlayer(
+                                    videoUrl = playlistArtwork.artwork.displayUrl,
+                                    volume = playlistArtwork.artwork.volume,
+                                    zoom = playlistArtwork.zoom,
+                                    offsetX = playlistArtwork.adjustment.x,
+                                    offsetY = playlistArtwork.adjustment.y,
+                                    isPaused = isPaused,
+                                    onEnded = onVideoEnded,
+                                    onBufferingChanged = { isBuffering = it }
+                                )
+
+                                if (isBuffering) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            color = Color.White,
+                                            modifier = Modifier.size(48.dp)
+                                        )
+                                    }
+                                }
+                            }
                     }
                 }
             }
@@ -619,13 +654,26 @@ fun VideoPlayer(
     offsetX: Float,
     offsetY: Float,
     isPaused: Boolean = false,
-    onEnded: () -> Unit
+    onEnded: () -> Unit,
+    onBufferingChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val exoPlayer = remember {
+        // Configure aggressive buffering for 4K video over WiFi
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                50000,  // Min buffer: 50 seconds
+                60000,  // Max buffer: 60 seconds
+                2500,   // Buffer for playback: 2.5 seconds
+                5000    // Buffer for playback after rebuffer: 5 seconds
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
         ExoPlayer.Builder(context)
+            .setLoadControl(loadControl)
             .build()
             .apply {
                 // Optimize for low-end devices
@@ -637,8 +685,17 @@ fun VideoPlayer(
 
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
-                        if (playbackState == Player.STATE_ENDED) {
-                            onEnded()
+                        when (playbackState) {
+                            Player.STATE_ENDED -> onEnded()
+                            Player.STATE_BUFFERING -> {
+                                Timber.d("Video buffering...")
+                                onBufferingChanged(true)
+                            }
+                            Player.STATE_READY -> {
+                                Timber.d("Video ready")
+                                onBufferingChanged(false)
+                            }
+                            else -> {}
                         }
                     }
                 })

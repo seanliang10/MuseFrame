@@ -1,5 +1,6 @@
 package com.museframe.app.data.repository
 
+import com.museframe.app.BuildConfig
 import com.museframe.app.data.api.ApiConstants
 import com.museframe.app.data.api.MuseFrameApiService
 import com.museframe.app.data.api.dto.DeviceRegisterRequest
@@ -41,7 +42,7 @@ class DeviceRepositoryImpl @Inject constructor(
                 request = DeviceRegisterRequest(
                     deviceId = pushyToken, // Using pushy token as device ID
                     token = ApiConstants.FRAME_TOKEN,
-                    currentVersion = "3.0.1"
+                    currentVersion = BuildConfig.VERSION_NAME
                 )
             )
 
