@@ -32,7 +32,6 @@ fun NoNetworkScreen(
     onNetworkRestored: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    var isChecking by remember { mutableStateOf(false) }
 
     // Auto-check network every 3 seconds
     LaunchedEffect(Unit) {
@@ -134,26 +133,20 @@ fun NoNetworkScreen(
                     // Retry Button
                     TvButton(
                         onClick = {
-                            isChecking = true
                             if (NetworkUtils.isNetworkAvailable(context)) {
                                 onRetry()
-                            } else {
-                                isChecking = false
                             }
                         },
                         modifier = Modifier.weight(1f),
-                        text = if (isChecking) "Checking..." else "Retry Connection",
-                        icon = if (!isChecking) Icons.Default.Refresh else null,
-                        enabled = !isChecking,
+                        text = "Retry Connection",
+                        icon = Icons.Default.Refresh,
                         colors = com.museframe.app.presentation.components.tv.TvButtonDefaults.colors(
                             backgroundColor = Color(0xFF424242),
                             contentColor = Color.White,
                             borderColor = Color(0xFF616161),
                             focusedBackgroundColor = Color(0xFF616161),
                             focusedContentColor = Color.White,
-                            focusedBorderColor = Color.White,
-                            disabledBackgroundColor = Color(0xFF303030),
-                            disabledContentColor = Color.Gray
+                            focusedBorderColor = Color.White
                         )
                     )
                 }

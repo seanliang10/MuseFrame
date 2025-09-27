@@ -26,6 +26,19 @@ fun SplashScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
+    // Show NoNetworkScreen if network check is needed
+    if (uiState.needsNetworkCheck) {
+        com.museframe.app.presentation.screens.common.NoNetworkScreen(
+            onRetry = {
+                viewModel.retryAuthCheck()
+            },
+            onNetworkRestored = {
+                viewModel.retryAuthCheck()
+            }
+        )
+        return
+    }
+
     // Handle navigation
     LaunchedEffect(uiState.shouldNavigate, uiState.isAuthenticated) {
         if (uiState.shouldNavigate) {

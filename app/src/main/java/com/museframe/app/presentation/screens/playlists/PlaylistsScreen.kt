@@ -105,44 +105,54 @@ fun PlaylistsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Action buttons in single row for portrait
-                Row(
+                // Action buttons in 2x2 grid for portrait
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    TvButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            if (!uiState.isLoading) {
-                                viewModel.refresh()
-                            }
-                        },
-                        text = if (uiState.isLoading) "Loading..." else "Refresh",
-                        icon = if (!uiState.isLoading) Icons.Default.Refresh else null,
-                        enabled = true, // Keep enabled to maintain focus
-                        requestInitialFocus = true,
-                        focusRequester = refreshButtonFocusRequester
-                    )
-                    TvButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = onExhibitionClick,
-                        text = "Exhibition",
-                        icon = Icons.Default.PlayArrow
-                    )
-                    TvButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = onVersionsClick,
-                        text = "Versions",
-                        icon = Icons.Default.Info
-                    )
-                    TvButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            viewModel.logout(onSuccess = onLogoutClick)
-                        },
-                        text = "Logout",
-                        icon = Icons.AutoMirrored.Default.ExitToApp
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        TvButton(
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                if (!uiState.isLoading) {
+                                    viewModel.refresh()
+                                }
+                            },
+                            text = if (uiState.isLoading) "Loading..." else "Refresh",
+                            icon = if (!uiState.isLoading) Icons.Default.Refresh else null,
+                            enabled = true,
+                            requestInitialFocus = true,
+                            focusRequester = refreshButtonFocusRequester
+                        )
+                        TvButton(
+                            modifier = Modifier.weight(1f),
+                            onClick = onExhibitionClick,
+                            text = "Exhibition",
+                            icon = Icons.Default.PlayArrow
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        TvButton(
+                            modifier = Modifier.weight(1f),
+                            onClick = onVersionsClick,
+                            text = "Versions",
+                            icon = Icons.Default.Info
+                        )
+                        TvButton(
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                viewModel.logout(onSuccess = onLogoutClick)
+                            },
+                            text = "Logout",
+                            icon = Icons.AutoMirrored.Default.ExitToApp
+                        )
+                    }
                 }
             }
         } else {
