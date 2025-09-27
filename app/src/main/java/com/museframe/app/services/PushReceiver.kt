@@ -41,7 +41,7 @@ class PushReceiver : BroadcastReceiver() {
                 PushCommand.RESUME.value -> handleResume(context)
                 PushCommand.UPDATE_DISPLAY_SETTING.value -> handleUpdateDisplaySetting(context, intent)
                 PushCommand.REFRESH_PLAYLISTS.value -> handleRefreshPlaylists(context)
-                PushCommand.REFRESH_PLAYLIST.value -> handleRefreshPlaylist(context, data)
+                PushCommand.REFRESH_PLAYLIST.value -> handleRefreshPlaylist(context, intent)
                 PushCommand.UPDATE_PLAYLIST_ARTWORK_SETTING.value -> handleUpdateArtworkSetting(context, intent)
                 PushCommand.CAST.value -> handleCast(context, intent)
                 PushCommand.CAST_EXHIBITION.value -> handleCastExhibition(context, intent)
@@ -187,17 +187,23 @@ class PushReceiver : BroadcastReceiver() {
         context.sendBroadcast(intent)
     }
 
-    private fun handleRefreshPlaylist(context: Context, data: String?) {
-        data?.let {
-            val json = Json.parseToJsonElement(it).jsonObject
-            val playlistId = json["playlist_id"]?.jsonPrimitive?.content
-            playlistId?.let { id ->
-                val intent = Intent("com.museframe.REFRESH_PLAYLIST")
-                intent.putExtra("playlist_id", id)
-                intent.setPackage(context.packageName)
-                context.sendBroadcast(intent)
+    private fun handleRefreshPlaylist(context: Context, pushIntent: Intent) {
+        var playlistId = pushIntent.getStringExtra("playlist_id")
+        if (playlistId == null) {
+            val intId = pushIntent.getIntExtra("playlist_id", 0)
+            if (intId != 0) {
+                playlistId = intId.toString()
             }
         }
+
+        playlistId?.let { id ->
+            Log.d(TAG, "Refresh playlist with ID: $id")
+            val intent = Intent("com.museframe.REFRESH_PLAYLIST")
+            intent.putExtra("playlist_id", id)
+            intent.putExtra("timestamp", System.currentTimeMillis())
+            intent.setPackage(context.packageName)
+            context.sendBroadcast(intent)
+        } ?: Log.w(TAG, "No playlist_id found in RefreshPlaylist command")
     }
 
     private fun handleUpdateArtworkSetting(context: Context, pushIntent: Intent) {

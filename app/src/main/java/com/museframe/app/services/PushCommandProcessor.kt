@@ -166,7 +166,7 @@ class PushCommandProcessor @Inject constructor(
     
     private fun handleRefreshPlaylist(intent: Intent, navigationHandler: NavigationHandler) {
         intent.getStringExtra("playlist_id")?.let { playlistId ->
-            navigationHandler.sendCommandToScreen("REFRESH_PLAYLIST:$playlistId")
+            navigationHandler.navigateToPlaylist(playlistId)
         }
     }
     

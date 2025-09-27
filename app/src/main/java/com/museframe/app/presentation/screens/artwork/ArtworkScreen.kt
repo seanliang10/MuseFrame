@@ -113,10 +113,6 @@ fun ArtworkScreen(
                         Timber.e("Invalid UPDATE_ARTWORK command format: $command")
                     }
                 }
-                command.startsWith("REFRESH_PLAYLIST:") -> {
-                    // Do nothing - ignore playlist refresh to avoid conflicts with transition system
-                    Timber.d("Ignoring REFRESH_PLAYLIST command to maintain playlist transition stability")
-                }
                 command.startsWith("UPDATE_PLAYLISTS") -> {
                     // Do nothing - ignore playlists update to avoid conflicts with transition system
                     Timber.d("Ignoring UPDATE_PLAYLISTS command to maintain playlist transition stability")
